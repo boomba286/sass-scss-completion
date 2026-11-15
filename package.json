@@ -1,0 +1,83 @@
+{
+  "name": "sass-scss-completion",
+  "displayName": "Sass/SCSS Parameter Completion",
+  "description": "Completes Sass function and mixin parameter names in SCSS, Sass, and Vue files.",
+  "version": "0.0.1",
+  "publisher": "boomba286",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/boomba286/sass-scss-completion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/boomba286/sass-scss-completion/issues"
+  },
+  "homepage": "https://github.com/boomba286/sass-scss-completion#readme",
+  "keywords": [
+    "sass",
+    "scss",
+    "completion",
+    "intellisense",
+    "vscode",
+    "trae"
+  ],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "icon": "icon.png",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:scss",
+    "onLanguage:sass",
+    "onLanguage:vue"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sass",
+        "aliases": ["Sass", "sass"],
+        "extensions": [".sass"]
+      }
+    ],
+    "configuration": {
+      "title": "Sass/SCSS Parameter Completion",
+      "properties": {
+        "sass-scss-completion.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional glob patterns excluded from workspace indexing, on top of the built-in list (dependency, build output, and cache directories). Each entry must be a single pattern, for example `vendor-legacy` or `**/generated/**`.",
+          "examples": [
+            [
+              "vendor-legacy",
+              "**/generated/**"
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -watch -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && node ./dist/test/runTest.js",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.75.0",
+    "@vscode/test-electron": "^2.4.1",
+    "mocha": "^10.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

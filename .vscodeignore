@@ -1,0 +1,12 @@
+.git/**
+.vscode/**
+.agents/**
+src/**
+**/*.test.ts
+tsconfig.json
+test-fixtures/**
+dist/test/**
+.vscode-test/**
+.gitignore
+node_modules/**
+*.vsix
