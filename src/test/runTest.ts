@@ -1,9 +1,20 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { runTests } from '@vscode/test-electron';
 
-// 로컬에 설치된 VS Code 를 그대로 사용한다(다운로드 방지).
+// Prefer a locally installed VS Code (to avoid downloading); otherwise download a stable build.
 const DEFAULT_VSCODE_EXECUTABLE =
   '/Applications/Visual Studio Code.app/Contents/MacOS/Code';
+
+/** Resolves the VS Code executable to use, or undefined to let the runner download one. */
+function resolveExecutable(): string | undefined {
+  const fromEnv = process.env.VSCODE_EXECUTABLE_PATH;
+
+  if (fromEnv) return fromEnv;
+  if (fs.existsSync(DEFAULT_VSCODE_EXECUTABLE)) return DEFAULT_VSCODE_EXECUTABLE;
+
+  return undefined;
+}
 
 async function main(): Promise<void> {
   const extensionDevelopmentPath = path.resolve(__dirname, '..', '..');
@@ -15,8 +26,7 @@ async function main(): Promise<void> {
   );
 
   await runTests({
-    vscodeExecutablePath:
-      process.env.VSCODE_EXECUTABLE_PATH ?? DEFAULT_VSCODE_EXECUTABLE,
+    vscodeExecutablePath: resolveExecutable(),
     extensionDevelopmentPath,
     extensionTestsPath,
     launchArgs: [workspacePath, '--disable-gpu', '--skip-welcome', '--skip-release-notes'],

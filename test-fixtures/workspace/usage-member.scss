@@ -1,0 +1,5 @@
+@use 'sass:color';
+
+.member {
+  border-color: color.adjust(red, $alpha: 'df', );
+}

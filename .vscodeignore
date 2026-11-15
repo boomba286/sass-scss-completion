@@ -1,6 +1,9 @@
 .git/**
 .vscode/**
+.github/**
+.trae/**
 .agents/**
+scripts/**
 src/**
 **/*.test.ts
 tsconfig.json

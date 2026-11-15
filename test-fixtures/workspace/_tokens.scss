@@ -1,0 +1,10 @@
+$spacing: 8px;
+
+@function scale($factor, $base: 16) {
+  @return $factor * $base;
+}
+
+@mixin flex-center($gap: 0) {
+  display: flex;
+  gap: $gap;
+}

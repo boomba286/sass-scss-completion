@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import Mocha from 'mocha';
 
-/** 호스트 안에서 mocha(TDD ui) 로 E2E 스위트를 구동한다. */
+/** Run the E2E suite with mocha (TDD ui) inside the host. */
 export function run(): Promise<void> {
   const mocha = new Mocha({ ui: 'tdd', color: true, timeout: 60000 });
   const testsRoot = __dirname;

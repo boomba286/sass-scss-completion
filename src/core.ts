@@ -1,4 +1,4 @@
-// VS Code API 에 의존하지 않는 순수 로직. Node 에서 그대로 검증할 수 있다.
+// Pure logic with no VS Code API dependency. Can be verified as-is in Node.
 
 const IDENT_RE = /[A-Za-z0-9_-]/;
 
@@ -22,7 +22,7 @@ function isIdentChar(ch: string | undefined): boolean {
 }
 
 /**
- * offset 을 감싸는 가장 안쪽 함수/믹스인 호출을 찾는다.
+ * Finds the innermost function/mixin call enclosing the given offset.
  */
 export function findEnclosingCall(text: string, offset: number): CallSite | null {
   let depth = 0;
@@ -85,7 +85,7 @@ export function findEnclosingCall(text: string, offset: number): CallSite | null
   return { name, namespace, openParen: open, closeParen: close };
 }
 
-/** 최상위(괄호/대괄호/중괄호/문자열 밖) 기준으로 콤마를 나눈다. */
+/** Splits on commas at the top level (outside parentheses/brackets/braces/strings). */
 export function splitTopLevel(input: string): string[] {
   const parts: string[] = [];
   let current = '';
@@ -121,7 +121,7 @@ export function splitTopLevel(input: string): string[] {
   return parts;
 }
 
-/** 시그니처 문자열("$value, $base: 16")에서 파라미터 이름만 뽑는다. */
+/** Extracts only parameter names from a signature string ("$value, $base: 16"). */
 export function parseParams(signature: string): string[] {
   const params: string[] = [];
 
@@ -133,7 +133,7 @@ export function parseParams(signature: string): string[] {
   return params;
 }
 
-/** 파일 텍스트에서 @function / @mixin 시그니처를 모두 수집한다. */
+/** Collects all @function / @mixin signatures from the file text. */
 export function extractSignatures(text: string): Signature[] {
   const found: Signature[] = [];
   const opener = /@(function|mixin)\s+([A-Za-z0-9_-]+)\s*\(/g;
@@ -170,14 +170,24 @@ export function extractSignatures(text: string): Signature[] {
   return found;
 }
 
-/** 인자 영역에서 이미 '이름'으로 쓰인 파라미터를 모은다. 커서 아래 토큰은 제외. */
+/** Returns the name of a keyword argument (`$name: value`) segment, or null otherwise. */
+export function keywordArgumentName(segment: string): string | null {
+  const match = segment.match(/^\$([A-Za-z0-9_-]+)\s*:/);
+
+  return match ? match[1] : null;
+}
+
+/**
+ * Collects keyword-argument names already passed in the argument region, excluding the token under the cursor.
+ * Only `$name:` forms count; positional values such as `math.div($a, 2)` are not treated as named parameters.
+ */
 export function usedParamNames(
   argText: string,
   argStart: number,
   cursorOffset: number,
 ): Set<string> {
   const used = new Set<string>();
-  const re = /\$[A-Za-z0-9_-]+/g;
+  const re = /\$([A-Za-z0-9_-]+)\s*:/g;
   let match: RegExpExecArray | null;
 
   while ((match = re.exec(argText)) !== null) {
@@ -186,13 +196,13 @@ export function usedParamNames(
 
     if (cursorOffset >= start && cursorOffset <= end) continue;
 
-    used.add(match[0].slice(1));
+    used.add(match[1]);
   }
 
   return used;
 }
 
-/** 커서 앞까지 '완료된' 인자 중 위치(positional) 인자 개수를 센다. */
+/** Counts positional arguments among the 'completed' arguments before the cursor. */
 export function countPositionalArgs(prefix: string): number {
   const segments = splitTopLevel(prefix).slice(0, -1);
   let count = 0;
@@ -201,7 +211,7 @@ export function countPositionalArgs(prefix: string): number {
     const trimmed = segment.trim();
 
     if (!trimmed) continue;
-    if (/^\$[A-Za-z0-9_-]+\s*:/.test(trimmed)) continue; // 키워드 인자
+    if (keywordArgumentName(trimmed) !== null) continue;
     count += 1;
   }
 
@@ -209,9 +219,9 @@ export function countPositionalArgs(prefix: string): number {
 }
 
 /**
- * 지금 위치에서 제안할 파라미터 이름 목록을 계산한다.
- * - 이미 이름으로 쓴 파라미터는 제외한다(중복 방지).
- * - 위치 인자로 이미 채운 만큼은 앞에서부터 제외한다.
+ * Computes the list of parameter names to suggest at the current position.
+ * - Excludes parameters already used by name (deduplication).
+ * - Excludes as many leading parameters as have been filled positionally.
  */
 export function suggestParams(
   text: string,
@@ -230,4 +240,105 @@ export function suggestParams(
   const positional = countPositionalArgs(prefix);
 
   return params.filter((name, index) => !used.has(name) && index >= positional);
+}
+
+export interface MemberContext {
+  /** Namespace of the `namespace.` before the cursor. */
+  namespace: string;
+  /** Already-typed member prefix (includes `$` for variables). */
+  prefix: string;
+  /** Whether this is a variable member (`ns.$`). */
+  variable: boolean;
+}
+
+const MEMBER_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.(\$?[A-Za-z0-9_-]*)$/;
+
+/** Detects a `namespace.member` (or `namespace.$variable`) pattern immediately before the cursor. */
+export function findModuleMemberContext(text: string, offset: number): MemberContext | null {
+  const match = text.slice(0, offset).match(MEMBER_RE);
+
+  if (!match) return null;
+
+  const prefix = match[2];
+
+  return { namespace: match[1], prefix, variable: prefix.startsWith('$') };
+}
+
+export interface MemberToken {
+  /** Namespace of `namespace.member`. */
+  namespace: string;
+  /** Member name without `$`. */
+  name: string;
+  /** Whether this is a variable member (`ns.$var`). */
+  variable: boolean;
+  /** Token start offset. */
+  start: number;
+  /** Token end offset. */
+  end: number;
+}
+
+const MEMBER_TOKEN_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.(\$?)([A-Za-z0-9_-]+)/g;
+
+/** Finds the `namespace.member` (or `namespace.$variable`) token enclosing the offset. */
+export function findModuleMemberToken(text: string, offset: number): MemberToken | null {
+  MEMBER_TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = MEMBER_TOKEN_RE.exec(text)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+
+    if (start > offset) break;
+
+    if (offset >= start && offset <= end) {
+      return {
+        namespace: match[1],
+        name: match[3],
+        variable: match[2] === '$',
+        start,
+        end,
+      };
+    }
+  }
+
+  return null;
+}
+
+export interface NamespaceContext {
+  /** Namespace prefix being typed before the cursor. */
+  prefix: string;
+  /** Prefix start offset. */
+  start: number;
+}
+
+/**
+ * If the cursor is in a context where a namespace (e.g. `color`) is being typed,
+ * returns the prefix and its start position.
+ * Returns null immediately after `.`/`$` (member/variable access) or when the prefix is empty.
+ */
+export function findNamespaceContext(text: string, offset: number): NamespaceContext | null {
+  let start = offset;
+
+  while (start > 0 && IDENT_RE.test(text[start - 1])) start -= 1;
+
+  const previous = start > 0 ? text[start - 1] : '';
+
+  if (previous === '.' || previous === '$') return null;
+
+  const prefix = text.slice(start, offset);
+
+  if (!prefix) return null;
+
+  return { prefix, start };
+}
+
+/** Collects variable declaration (`$name:`) names from the file text. */
+export function extractVariables(text: string): string[] {
+  const names = new Set<string>();
+  const re = /(^|[\n;{])\s*\$([A-Za-z0-9_-]+)\s*:/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) names.add(match[2]);
+
+  return [...names];
 }
