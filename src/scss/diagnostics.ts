@@ -1,6 +1,6 @@
-// Pure logic for finding errors in a document (missing required arguments, undefined variables). Independent of the VS Code API.
+// Pure logic for finding errors in a document (missing required arguments, unknown members, undefined functions). Independent of the VS Code API.
 
-import { extractSignatures, keywordArgumentName, splitTopLevel } from './core';
+import { keywordArgumentName, splitTopLevel } from './core';
 import {
   findBuiltinFunction,
   missingRequiredParams,
@@ -10,11 +10,14 @@ import {
 /** Finds the start position of a `namespace.name(` call. */
 const CALL_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.([A-Za-z0-9_-]+)\s*\(/g;
 
-/** Finds `$name` references/declarations. */
-const VARIABLE_RE = /\$([A-Za-z0-9_-]+)/g;
-
 /** Finds `namespace.$name` member variable accesses. */
 const MEMBER_VARIABLE_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.\$([A-Za-z0-9_-]+)/g;
+
+/**
+ * How serious a problem is. `warning` marks one the Sass compiler accepts, so it points at
+ * something suspicious rather than a build failure; every other issue is an `error`.
+ */
+export type DiagnosticSeverity = 'error' | 'warning';
 
 export interface DiagnosticIssue {
   /** Start offset within the document. */
@@ -22,6 +25,14 @@ export interface DiagnosticIssue {
   /** End offset within the document. */
   end: number;
   message: string;
+  /** Defaults to `error` when omitted. */
+  severity?: DiagnosticSeverity;
+}
+
+/** A half-open `[start, end)` range of offsets inside the document. */
+export interface TextRange {
+  start: number;
+  end: number;
 }
 
 /**
@@ -296,69 +307,67 @@ export function findModuleIssues(
   return issues;
 }
 
-/** Collects variable names considered defined in the document (local declarations, parameters, loop variables). */
-function collectDefinedVariables(masked: string): Set<string> {
-  const defined = new Set<string>();
+/** Matches an unnamespaced call: a function name with `(` directly after it. */
+const FUNCTION_CALL_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\(/g;
 
-  // Local variable declarations `$name:` (only when preceded by start-of-statement, newline, `;`, or `{`).
-  for (const match of masked.matchAll(/(?:^|[\n;{])\s*\$([A-Za-z0-9_-]+)\s*:/g)) {
-    defined.add(match[1]);
-  }
+/** Keywords directly in front of a call mean the call names a mixin, not a function. */
+const MIXIN_CALL_RE = /(?:@include|@mixin|@function)\s+$/;
 
-  // `@function` / `@mixin` parameters.
-  for (const signature of extractSignatures(masked)) {
-    for (const param of signature.params) defined.add(param);
-  }
+/** Characters directly in front of a name mean it is not an unnamespaced function call. */
+const NOT_A_CALL_PREFIX = new Set(['@', ':', '.']);
 
-  // `@each $a, $b in ...` loop variables.
-  for (const match of masked.matchAll(/@each\s+((?:\$[A-Za-z0-9_-]+\s*,?\s*)+)in\b/g)) {
-    for (const variable of match[1].matchAll(/\$([A-Za-z0-9_-]+)/g)) defined.add(variable[1]);
-  }
-
-  // `@for $i from ...` loop variables.
-  for (const match of masked.matchAll(/@for\s+\$([A-Za-z0-9_-]+)\s+from\b/g)) {
-    defined.add(match[1]);
-  }
-
-  return defined;
+/** True when `offset` lies inside one of `ranges`. */
+function isInsideRange(offset: number, ranges: readonly TextRange[]): boolean {
+  return ranges.some((range) => offset >= range.start && offset < range.end);
 }
 
 /**
- * Finds uses of undeclared `$variables` across the whole document (whole-file reference check).
- * Local declarations (`$x:`), function/mixin parameters, and `@each`/`@for` loop variables
- * are treated as definitions; `namespace.$variable` member access and keyword arguments
- * `$name:` are not treated as references.
- * `extraDefined` carries names that are defined outside the file, e.g. variables brought into
- * global scope by `@use '...' as *`.
+ * Finds calls to functions that nothing defines, in the SassScript parts of a document: variable
+ * values, `@return`, conditions, and so on.
+ *
+ * Two areas are deliberately left out. Property values are covered by
+ * `findUnknownPropertyValues`, which judges them against the value definition syntax of the
+ * property, so `valueRanges` (see `declarationValueRanges`) keeps this check from reporting the
+ * same value twice. Everything that is not an unnamespaced function call is left out too: a
+ * pseudo-class (`:not(…)`), an at-rule header (`@media (…)`), a namespaced call (`ns.name(…)`,
+ * which `findModuleIssues` handles), and an `@include`/`@mixin`/`@function` header, which names a
+ * mixin.
+ *
+ * `knownFunctions` carries the names that must not be reported: the Sass global functions, the
+ * functions the document declares, the functions brought in by `@use '...' as *`, and the plain
+ * CSS functions Sass passes through untouched. The caller decides which of those apply.
  */
-export function findUndefinedVariables(
+export function findUndefinedFunctions(
   text: string,
-  extraDefined: ReadonlySet<string> = new Set(),
+  knownFunctions: ReadonlySet<string>,
+  valueRanges: readonly TextRange[] = [],
 ): DiagnosticIssue[] {
   const masked = maskNonCode(text);
-  const defined = collectDefinedVariables(masked);
-
-  for (const name of extraDefined) defined.add(name);
-
   const issues: DiagnosticIssue[] = [];
 
-  VARIABLE_RE.lastIndex = 0;
+  FUNCTION_CALL_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = VARIABLE_RE.exec(masked)) !== null) {
+  while ((match = FUNCTION_CALL_RE.exec(masked)) !== null) {
     const name = match[1];
     const start = match.index;
-    const end = start + match[0].length;
 
-    // `ns.$var` is a module variable access, so it is not a target.
-    if (start > 0 && masked[start - 1] === '.') continue;
+    if (knownFunctions.has(name)) continue;
+    if (isInsideRange(start, valueRanges)) continue;
 
-    // `$name:` is a variable declaration or keyword argument, so it is not a reference.
-    if (/^\s*:/.test(masked.slice(end))) continue;
+    const before = masked.slice(0, start);
+    const previous = before[before.length - 1] ?? '';
 
-    if (defined.has(name)) continue;
+    if (NOT_A_CALL_PREFIX.has(previous)) continue;
+    if (MIXIN_CALL_RE.test(before)) continue;
 
-    issues.push({ start, end, message: `Used undefined variable $${name}.` });
+    const openParen = start + match[0].length - 1;
+    const closeParen = findCloseParen(masked, openParen);
+
+    // Skip a call whose parentheses are not closed yet (still being typed).
+    if (closeParen === -1) continue;
+
+    issues.push({ start, end: closeParen + 1, message: `Undefined function ${name}.` });
   }
 
   return issues;

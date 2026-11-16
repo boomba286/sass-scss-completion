@@ -28,6 +28,9 @@
 - ✅ Suggests parameter names when you type `$`, a comma, or just after an opening parenthesis.
 - ✅ Works for the `@function` and `@mixin` definitions in your project, called by bare name or through a `@use`d module.
 - ✅ After a `@use`d module's `namespace.` completes its functions and mixins, and after `namespace.$` completes its variables, resolved from the file the `@use` points at.
+- ✅ Follows `@forward` re-exports, so `namespace.` and `namespace.$` also complete the members a module passes on from the files it forwards.
+- ✅ Completes the members a module loads with `@use '...' as *`: a bare `$` suggests its variables and a bare name its functions and mixins, with no namespace.
+- ✅ A `$` also completes the variables in scope at the cursor: the file's own declarations in order, `@mixin`/`@function` parameters, and `@each`/`@for` loop variables.
 - ✅ Skips named parameters already used in the current call and accounts for preceding positional arguments.
 - ✅ Indexes `@function`, `@mixin`, and `$variable` declarations from the SCSS and Sass files in the workspace.
 
@@ -43,6 +46,11 @@
 - ✅ In `@use 'sass:…` completes built-in module ids together with a short description.
 - ✅ Completes the names of namespaces already loaded with `@use`.
 
+### 🎛️ CSS custom properties
+
+- ✅ Inside `var(...)` completes the `--name` custom properties declared anywhere in the workspace.
+- ✅ Reads declarations from any rule (`:root` included) and accepts a fallback, as in `var(--name, 0)`.
+
 ### 💬 Hover documentation
 
 - ✅ Hovering a built-in function or mixin shows its signature, per-parameter descriptions (required/optional/default), a usage example, and a link to the official documentation.
@@ -53,8 +61,11 @@
 
 - ✅ Underlines built-in module calls that are missing required arguments.
 - ✅ Underlines workspace module calls (`ns.fn(...)`, `@include ns.mixin(...)`) that omit a parameter without a default value.
-- ✅ Underlines uses of undefined `$variables`.
+- ✅ Underlines uses of undefined `$variables`, following Sass scoping: a loop variable used outside its loop, or a declaration placed after its use, is reported.
 - ✅ Underlines references to a member a `@use`d module does not export: `ns.unknown(...)`, `@include ns.unknown(...)`, and `ns.$unknown`.
+- ✅ Underlines a call to a function that no module, workspace file, or Sass global defines, for example `casins(1)` in a variable value or a `@return`.
+- ✅ Underlines a CSS property value that the property does not accept, for example `text-transform: uppercases`, `display: flexx`, `color: notacolor`, or `text-transform: casinsss()`.
+- ✅ Warns about a `var(--name)` use whose `--name` nothing declares. The compiler accepts an unknown name, so this is a warning, not an error.
 
 ## 🌐 Supported Languages
 
@@ -98,7 +109,7 @@ The workspace index is rebuilt automatically when files change and whenever this
 
 ## 📖 Usage
 
-💡 = where to type for suggestions · ❌ = an error is shown · ✅ = no error
+💡 = where to type for suggestions · ❌ = an error is shown · ⚠️ = a warning is shown · ✅ = no error
 
 ### 1. 🧵 Parameters of your own functions and mixins
 
@@ -166,6 +177,43 @@ $spacing: 8px;
 .grid {
   /* 💡 after `tokens.$` suggests `$spacing` */
   margin: tokens.$spacing;
+}
+```
+
+A module that re-exports its members with `@forward` is followed, so the namespace sees the members of the forwarded files too.
+
+```scss
+/* _forward.scss */
+@forward 'tokens';
+@forward 'variables';
+
+/* usage.scss */
+@use 'forward' as fr;
+
+.grid {
+  /* 💡 after `fr.` suggests `scale` and `flex-center`, re-exported from `tokens` */
+  padding: fr.scale(2, 8px);
+}
+
+.grid {
+  /* 💡 after `fr.$` suggests `$spacing` and `$colors`, re-exported from `tokens` and `variables` */
+  margin: fr.$spacing;
+}
+```
+
+With `@use '...' as *`, the module's members are used without a namespace: a bare `$` suggests its variables, and a bare name its functions and mixins.
+
+```scss
+@use 'forward' as *;
+
+.grid {
+  /* 💡 a bare `$` suggests `$spacing` and `$colors` */
+  margin: $spacing;
+}
+
+.grid {
+  /* 💡 a bare name suggests `scale`, `flex-center`, `rem`, … */
+  padding: scale(2, 8px);
 }
 ```
 
@@ -244,6 +292,20 @@ Common mistakes are underlined as errors while you type, before anything reaches
   /* ❌ Used undefined variable $undefined. */
   padding: $undefined;
 }
+
+.f {
+  /* ❌ Unknown value 'uppercases' for property 'text-transform'. */
+  text-transform: uppercases;
+}
+```
+
+A call whose name nothing defines is reported wherever SassScript runs, for example in a `@return`:
+
+```scss
+@function spacing($step) {
+  /* ❌ Undefined function casins. */
+  @return casins($step);
+}
 ```
 
 A parameter counts as required when it has no default value and is not variadic, so omitting a defaulted one is not an error:
@@ -259,6 +321,86 @@ A parameter counts as required when it has no default value and is not variadic,
   width: d.rem($value: 12);
 }
 ```
+
+The property-value check validates a value against the value definition syntax of the property, taken from the CSS data. Every standard property whose value can be judged is covered, so `display: flexx`, `color: notacolor`, and `width: abc` are all underlined. A value the compiler resolves — a Sass variable, interpolation, or a call of a function something else defines — says nothing about the value that reaches the stylesheet, so it is left alone. A call of a name nothing defines cannot come from Sass either, so the property judges it like any other value:
+
+```scss
+.icon {
+  /* ❌ not a value `color` accepts */
+  color: notacolor;
+}
+
+.card {
+  /* ✅ a colour function is a valid <color> */
+  color: rgb(0 0 0 / 50%);
+}
+
+.hero {
+  /* ✅ a Sass variable is resolved by the compiler */
+  color: $brand;
+}
+
+.label {
+  /* ✅ a call to a function something else defines is not judged */
+  text-transform: casing();
+}
+
+.unknown {
+  /* ❌ nothing defines `casinsss`, so the call is judged as an ordinary value */
+  text-transform: casinsss();
+}
+```
+
+### 6. 🎛️ CSS custom properties
+
+The `--name` custom properties declared in the workspace are suggested inside a `var()` call, and a use whose name nothing declares is flagged with a warning. The compiler accepts an unknown name, so it is not reported as an error.
+
+```scss
+:root {
+  --main-color: skyblue;
+  --basic-padding: 5px 15px;
+}
+
+.card {
+  /* 💡 typing `--` inside `var()` suggests `--main-color` and `--basic-padding` */
+  color: var(--main-color);
+  /* ✅ a fallback is accepted */
+  padding: var(--basic-padding, 0);
+}
+
+.badge {
+  /* ⚠️ Unknown custom property --brand. */
+  color: var(--brand);
+}
+```
+
+### 7. 🧮 Variable scope
+
+Variables are read the way Sass binds them, so a `$` offers what is actually in scope at the cursor and a use that nothing declares is underlined.
+
+```scss
+$base: 8px;
+
+@each $step in 1 2 3 {
+  .item {
+    /* 💡 `$base` and the loop variable `$step` are completed here */
+    margin: $base * $step;
+  }
+}
+
+.outside {
+  /* ❌ Used undefined variable $step. — the loop variable is out of scope */
+  margin: $step;
+}
+
+.after {
+  /* ❌ Used undefined variable $later. — a declaration must come before its use */
+  width: $later;
+}
+$later: 1px;
+```
+
+A `$name: value` written inside a flow-control block (`@if`, `@else`, `@each`, `@for`, `@while`) assigns to a variable of the same name in the block that holds the rule when there is one, and is local to the rule otherwise. `!global` binds the name at the root. A `@mixin`/`@function` body sees every root declaration whatever the call order, while its parameters and locals stay local.
 
 ## 📦 Installation
 
@@ -302,9 +444,14 @@ The E2E run uses a locally installed VS Code by default. Set `VSCODE_EXECUTABLE_
 - Workspace functions and mixins are indexed by name across the workspace; module visibility is not fully resolved.
 - If multiple definitions share a name, the first definition found is used.
 - Only definitions in `.scss` and `.sass` files are indexed.
-- Workspace variables are completed through `namespace.$`; a bare `$variable` name outside a call is not completed.
+- Workspace variables are completed through `namespace.$`, or as a bare `$name` when the module is loaded with `@use '...' as *`.
 - Missing-required-argument diagnostics apply to built-in module calls and to `@use`d workspace modules that the extension can resolve; a parameter counts as required when it has no default value and is not variadic.
-- The unknown-member check applies to `@use`d modules that the extension can resolve in the workspace; a module that re-exports members with `@forward` is skipped.
+- The unknown-member check applies to `@use`d modules that the extension can resolve in the workspace, following their `@forward` re-exports; when a re-exported file cannot be resolved, the module is left out of the check rather than reported.
+- The CSS property-value check runs on SCSS only, since the parser does not read indented Sass. It covers the standard properties whose value can be judged from the CSS value definition syntax; vendor-prefixed and non-standard properties are not checked, and a value that holds a Sass variable, interpolation, or a function the property does not know is left alone.
+- Variable scope is read from the braces of SCSS. Indented Sass has no braces, so its scopes are read as the root scope: a declaration inside a nested rule is taken as global, which can leave a use the compiler rejects unflagged.
+- Inside a `@mixin`/`@function` body a root declaration is accepted whatever its position, while the compiler only sees a global declared before the call. A global declared after a call is therefore not flagged; this keeps the common "declare the global after the mixin, before the include" pattern from being reported.
+- A keyword argument written on its own line (`$name: value` as an argument) is read as a declaration, so a use of that name later in the same block is not flagged.
+- Custom property names are read from `--name: value` declarations across the workspace, treated as one flat set rather than per scope or per file. A name built with interpolation (`--#{$name}`) is neither completed nor required, so `var(--a#{$x})` is left alone.
 
 ## 📄 License
 

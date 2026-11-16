@@ -45,6 +45,19 @@ export function parseUseStatements(text: string): UseStatement[] {
   return statements;
 }
 
+const FORWARD_RE = /@forward\s+['"]([^'"]+)['"]/g;
+
+/** URLs re-exported with `@forward` in the file text, in order of appearance. */
+export function parseForwardUrls(text: string): string[] {
+  const urls: string[] = [];
+  FORWARD_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = FORWARD_RE.exec(text)) !== null) urls.push(match[1]);
+
+  return urls;
+}
+
 export interface LoadedNamespace {
   namespace: string;
   url: string;

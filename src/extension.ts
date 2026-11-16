@@ -10,9 +10,8 @@ import {
   suggestParams,
   type CallSite,
   type MemberContext,
-  type Signature,
   type SignatureKind,
-} from './core';
+} from './scss/core';
 import {
   findBuiltinFunction,
   parseSassModuleNamespaces,
@@ -24,16 +23,37 @@ import {
   BUILTIN_MODULE_DESCRIPTIONS,
   BUILTIN_VARIABLES,
   type BuiltinFunction,
-} from './builtin-modules';
-import { builtinModuleId, loadedNamespaces, moduleFileCandidates, parseUseStatements } from './modules';
+} from './scss/builtin-modules';
+import {
+  builtinModuleId,
+  loadedNamespaces,
+  moduleFileCandidates,
+  parseForwardUrls,
+  parseUseStatements,
+} from './scss/modules';
+import {
+  collectModuleExports,
+  type ModuleExports,
+  type ModuleFile,
+  type ModuleSignature,
+} from './scss/members';
+import {
+  extractCustomProperties,
+  findUndefinedCustomProperties,
+} from './css/custom-properties';
+import { declarationValueRanges, findUnknownPropertyValues } from './css/diagnostics';
+import { knownCssFunctions } from './css/properties';
+import { DYNAMIC_FUNCTIONS } from './css/values/tokenizer';
+import { GLOBAL_FUNCTIONS } from './scss/global-functions';
 import {
   findMissingRequiredArgs,
   findModuleIssues,
-  findUndefinedVariables,
+  findUndefinedFunctions,
   maskNonCode,
   type ModuleMember,
   type ModuleMembers,
-} from './diagnostics';
+} from './scss/diagnostics';
+import { findUndefinedVariables, visibleVariablesAt } from './scss/scopes';
 
 const GLOB = '**/*.{scss,sass}';
 const CONFIG_SECTION = 'sass-scss-completion';
@@ -71,6 +91,9 @@ const EXCLUDED_DIRS = [
 
 const MAX_FILES = 5000;
 
+/** The custom property name being typed as the first argument of a `var(...)` call. */
+const VAR_FIRST_ARG_RE = /(?:^|[^A-Za-z0-9_-])var\(\s*([A-Za-z0-9_-]*)$/;
+
 /** A single exclude glob combining the built-in list with the user setting (`exclude`). */
 function excludeGlob(): string {
   const extra = vscode.workspace
@@ -97,15 +120,19 @@ function isExcludedPath(fsPath: string): boolean {
   return fsPath.split(/[\\/]/).some((segment) => dirs.has(segment));
 }
 
-interface IndexedSignature extends Signature {
-  file: string;
-}
+/** A signature together with the file it was declared in. */
+type IndexedSignature = ModuleSignature;
 
-interface IndexedFile {
-  functions: IndexedSignature[];
-  variables: string[];
-  /** True when the file re-exports other files with `@forward`, so its own member list is incomplete. */
-  forwarded: boolean;
+/** The members one workspace file declares, plus the URLs it re-exports with `@forward`. */
+type IndexedFile = ModuleFile;
+
+/** A name brought into the global scope by `@use '...' as *`, and the module that exports it. */
+interface GlobalMember {
+  /** `variable` for a `$name`, otherwise the kind of callable member. */
+  kind: SignatureKind | 'variable';
+  name: string;
+  /** Module the name came from, for the completion item detail. */
+  source: string;
 }
 
 /** Module basename with the partial prefix/extension removed. */
@@ -133,10 +160,12 @@ function memberIndex(signatures: IndexedSignature[], kind: SignatureKind): Map<s
 class SignatureIndex {
   private definitions = new Map<string, IndexedSignature>();
   private files = new Map<string, IndexedFile>();
+  private customProperties = new Set<string>();
 
   async rebuild(): Promise<void> {
     const definitions = new Map<string, IndexedSignature>();
     const files = new Map<string, IndexedFile>();
+    const customProperties = new Set<string>();
     let uris: vscode.Uri[] = [];
 
     try {
@@ -159,8 +188,10 @@ class SignatureIndex {
       files.set(uri.fsPath, {
         functions: signatures.map((signature) => ({ ...signature, file: uri.fsPath })),
         variables: extractVariables(text),
-        forwarded: /@forward\b/.test(maskNonCode(text)),
+        forwards: parseForwardUrls(text),
       });
+
+      for (const name of extractCustomProperties(text)) customProperties.add(name);
 
       for (const signature of signatures) {
         if (!definitions.has(signature.name)) {
@@ -171,28 +202,49 @@ class SignatureIndex {
 
     this.definitions = definitions;
     this.files = files;
+    this.customProperties = customProperties;
   }
 
   get(name: string): IndexedSignature | null {
     return this.definitions.get(name) ?? null;
   }
 
-  /** Resolves a `@use` URL to the actual module file relative to the current file. */
-  resolveModule(url: string, fromFile: string): { path: string; file: IndexedFile } | null {
-    for (const candidate of moduleFileCandidates(url, fromFile)) {
-      const file = this.files.get(candidate);
+  /** The custom property names declared anywhere in the workspace. */
+  customPropertyNames(): ReadonlySet<string> {
+    return this.customProperties;
+  }
 
-      if (file) return { path: candidate, file };
+  /** Resolves a `@use`/`@forward` URL to the actual module file relative to `fromFile`. */
+  resolveModulePath(url: string, fromFile: string): string | null {
+    for (const candidate of moduleFileCandidates(url, fromFile)) {
+      if (this.files.has(candidate)) return candidate;
     }
 
     const base = moduleBase(url);
 
-    for (const [fsPath, file] of this.files) {
-      if (moduleBase(fsPath) === base) return { path: fsPath, file };
+    for (const fsPath of this.files.keys()) {
+      if (moduleBase(fsPath) === base) return fsPath;
     }
 
     return null;
   }
+
+  /** The members a module exports, following the files it re-exports with `@forward`. */
+  exportsOf(filePath: string): ModuleExports {
+    return collectModuleExports(filePath, this.files, (url, fromFile) =>
+      this.resolveModulePath(url, fromFile),
+    );
+  }
+}
+
+/** The `$variable` or name token directly before the cursor, with the offset it starts at. */
+function typedToken(text: string, offset: number): { token: string; start: number } {
+  let start = offset;
+
+  while (start > 0 && /[A-Za-z0-9_-]/.test(text[start - 1])) start -= 1;
+  if (start > 0 && text[start - 1] === '$') start -= 1;
+
+  return { token: text.slice(start, offset), start };
 }
 
 /** The replacement range covering the `$prefix` token being typed before the cursor. */
@@ -201,10 +253,7 @@ function prefixRange(
   text: string,
   offset: number,
 ): vscode.Range {
-  let start = offset;
-
-  while (start > 0 && /[A-Za-z0-9_-]/.test(text[start - 1])) start -= 1;
-  if (start > 0 && text[start - 1] === '$') start -= 1;
+  const { start } = typedToken(text, offset);
 
   return new vscode.Range(document.positionAt(start), document.positionAt(offset));
 }
@@ -349,9 +398,9 @@ function builtinMemberItems(
   });
 }
 
-/** Completion items for workspace module file members (functions, mixins, variables). */
+/** Completion items for workspace module members (functions, mixins, variables). */
 function workspaceMemberItems(
-  file: IndexedFile,
+  exports: ModuleExports,
   filePath: string,
   context: MemberContext,
   range: vscode.Range,
@@ -359,7 +408,7 @@ function workspaceMemberItems(
   const label = path.basename(filePath);
 
   if (context.variable) {
-    return file.variables.map((name) => {
+    return exports.variables.map((name) => {
       const item = new vscode.CompletionItem(`$${name}`, vscode.CompletionItemKind.Variable);
 
       item.insertText = `$${name}`;
@@ -370,7 +419,7 @@ function workspaceMemberItems(
     });
   }
 
-  return file.functions.map((definition) => {
+  return exports.functions.map((definition) => {
     const item = new vscode.CompletionItem(definition.name, itemKind(definition.kind));
 
     item.insertText = definition.name;
@@ -386,9 +435,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const diagnosticCollection =
     vscode.languages.createDiagnosticCollection('sass-scss-completion');
 
-  /** Variable names brought into global scope by `@use '...' as *` (built-in or workspace module). */
-  const globalVariables = (text: string, document: vscode.TextDocument): Set<string> => {
-    const names = new Set<string>();
+  /**
+   * Names used without a namespace because of `@use '...' as *`, deduplicated: the members of the
+   * workspace or built-in module the statement loads, with its `@forward` re-exports followed.
+   */
+  const globalMembers = (text: string, document: vscode.TextDocument): GlobalMember[] => {
+    const members = new Map<string, GlobalMember>();
+    const add = (kind: GlobalMember['kind'], name: string, source: string): void => {
+      const key = `${kind}:${name}`;
+
+      if (!members.has(key)) members.set(key, { kind, name, source });
+    };
 
     for (const use of parseUseStatements(text)) {
       if (!use.global) continue;
@@ -396,13 +453,51 @@ export function activate(context: vscode.ExtensionContext): void {
       const moduleId = builtinModuleId(use.url);
 
       if (moduleId) {
-        for (const variable of BUILTIN_VARIABLES[moduleId] ?? []) names.add(variable.name);
+        const source = `sass:${moduleId}`;
+
+        for (const variable of BUILTIN_VARIABLES[moduleId] ?? []) {
+          add('variable', variable.name, source);
+        }
+
+        for (const entry of listBuiltinMembers(moduleId)) add(entry.kind, entry.name, source);
+
         continue;
       }
 
-      const resolved = index.resolveModule(use.url, document.uri.fsPath);
+      const resolved = index.resolveModulePath(use.url, document.uri.fsPath);
 
-      if (resolved) for (const name of resolved.file.variables) names.add(name);
+      if (resolved === null) continue;
+
+      const source = path.basename(resolved);
+      const exports = index.exportsOf(resolved);
+
+      for (const name of exports.variables) add('variable', name, source);
+
+      for (const signature of exports.functions) add(signature.kind, signature.name, source);
+    }
+
+    return [...members.values()];
+  };
+
+  const globalVariableNames = (members: readonly GlobalMember[]): Set<string> =>
+    new Set(
+      members.filter((member) => member.kind === 'variable').map((member) => member.name),
+    );
+
+  /**
+   * Function names that can be called without a namespace, and so must never be reported as a
+   * typo: the Sass global functions, the plain CSS functions Sass passes through, the functions
+   * the document declares, and the functions brought in by `@use '...' as *`.
+   */
+  const callableFunctions = (text: string, members: readonly GlobalMember[]): Set<string> => {
+    const names = new Set<string>([...GLOBAL_FUNCTIONS, ...DYNAMIC_FUNCTIONS, ...knownCssFunctions()]);
+
+    for (const signature of extractSignatures(text)) {
+      if (signature.kind === 'function') names.add(signature.name);
+    }
+
+    for (const member of members) {
+      if (member.kind === 'function') names.add(member.name);
     }
 
     return names;
@@ -419,15 +514,20 @@ export function activate(context: vscode.ExtensionContext): void {
       if (use.global || !use.namespace) continue;
       if (builtinModuleId(use.url)) continue;
 
-      const resolved = index.resolveModule(use.url, document.uri.fsPath);
+      const resolved = index.resolveModulePath(use.url, document.uri.fsPath);
 
-      // A module that re-exports through `@forward` has members this index cannot see.
-      if (!resolved || resolved.file.forwarded) continue;
+      if (resolved === null) continue;
+
+      const exports = index.exportsOf(resolved);
+
+      // A re-export the index cannot resolve leaves members unaccounted for, so the module is
+      // not judged: reporting them would flag valid code as unknown.
+      if (!exports.complete) continue;
 
       modules.set(use.namespace, {
-        functions: memberIndex(resolved.file.functions, 'function'),
-        mixins: memberIndex(resolved.file.functions, 'mixin'),
-        variables: new Set(resolved.file.variables),
+        functions: memberIndex(exports.functions, 'function'),
+        mixins: memberIndex(exports.functions, 'mixin'),
+        variables: new Set(exports.variables),
       });
     }
 
@@ -439,21 +539,38 @@ export function activate(context: vscode.ExtensionContext): void {
     if (document.languageId !== 'scss' && document.languageId !== 'sass') return;
 
     const text = document.getText();
+    const members = globalMembers(text, document);
+    // The CSS parser understands SCSS syntax only, so indented Sass is left out of the value checks.
+    const scssSyntax = document.languageId === 'scss';
+    const functions = scssSyntax ? callableFunctions(text, members) : new Set<string>();
+    // Custom properties declared in the workspace index plus the ones this document declares,
+    // which the index may not have seen yet.
+    const customProperties = new Set([
+      ...index.customPropertyNames(),
+      ...extractCustomProperties(text),
+    ]);
     const issues = [
       ...findMissingRequiredArgs(text),
       ...findModuleIssues(text, workspaceModules(text, document)),
-      ...findUndefinedVariables(text, globalVariables(text, document)),
+      ...findUndefinedVariables(text, globalVariableNames(members)),
+      ...findUndefinedCustomProperties(text, customProperties),
+      ...(scssSyntax
+        ? [
+            ...findUnknownPropertyValues(text, functions),
+            ...findUndefinedFunctions(text, functions, declarationValueRanges(text)),
+          ]
+        : []),
     ];
     const diagnostics = issues.map((issue) => {
       const range = new vscode.Range(
         document.positionAt(issue.start),
         document.positionAt(issue.end),
       );
-      const diagnostic = new vscode.Diagnostic(
-        range,
-        issue.message,
-        vscode.DiagnosticSeverity.Error,
-      );
+      const severity =
+        issue.severity === 'warning'
+          ? vscode.DiagnosticSeverity.Warning
+          : vscode.DiagnosticSeverity.Error;
+      const diagnostic = new vscode.Diagnostic(range, issue.message, severity);
 
       diagnostic.source = 'sass-scss-completion';
       return diagnostic;
@@ -545,14 +662,128 @@ export function activate(context: vscode.ExtensionContext): void {
       if (moduleId) {
         items = builtinMemberItems(moduleId, memberContext, range);
       } else {
-        const resolved = index.resolveModule(statement.url, document.uri.fsPath);
+        const resolved = index.resolveModulePath(statement.url, document.uri.fsPath);
 
-        if (resolved) {
-          items = workspaceMemberItems(resolved.file, resolved.path, memberContext, range);
+        if (resolved !== null) {
+          items = workspaceMemberItems(index.exportsOf(resolved), resolved, memberContext, range);
         }
       }
 
       return items.length > 0 ? new vscode.CompletionList(items, false) : undefined;
+    },
+  };
+
+  /**
+   * The `$` trigger. A `$` offers the variables in scope at the cursor: the file's own
+   * declarations, parameters, and loop variables, together with the `@use '...' as *` members.
+   * A bare name offers the functions and mixins brought in by `@use '...' as *`.
+   */
+  const globalMemberProvider: vscode.CompletionItemProvider = {
+    provideCompletionItems(document, position) {
+      if (document.uri.scheme !== 'file') return undefined;
+
+      const text = document.getText();
+      const masked = maskNonCode(text);
+      const offset = document.offsetAt(position);
+
+      // Nothing is completed inside a string or a comment.
+      if (masked[offset - 1] !== text[offset - 1]) return undefined;
+
+      const { token, start } = typedToken(text, offset);
+      const previous = masked.slice(0, start).trimEnd().slice(-1);
+
+      // `ns.member` and `ns.$member` belong to the module member provider.
+      if (previous === '.' || previous === '$') return undefined;
+
+      const members = globalMembers(text, document);
+      const range = new vscode.Range(document.positionAt(start), document.positionAt(offset));
+
+      if (token.startsWith('$')) {
+        const local = new Set(visibleVariablesAt(text, start));
+        const items: vscode.CompletionItem[] = [...local].sort().map((name) => {
+          const item = new vscode.CompletionItem(`$${name}`, vscode.CompletionItemKind.Variable);
+
+          item.insertText = `$${name}`;
+          item.range = range;
+          item.detail = 'SCSS variable';
+
+          return item;
+        });
+
+        for (const member of members) {
+          if (member.kind !== 'variable' || local.has(member.name)) continue;
+
+          const item = new vscode.CompletionItem(
+            `$${member.name}`,
+            vscode.CompletionItemKind.Variable,
+          );
+
+          item.insertText = `$${member.name}`;
+          item.range = range;
+          item.detail = `@variable · ${member.source} (as *)`;
+
+          items.push(item);
+        }
+
+        return items.length > 0 ? new vscode.CompletionList(items, false) : undefined;
+      }
+
+      const callables = members.filter((member) => member.kind !== 'variable');
+
+      if (callables.length === 0) return undefined;
+
+      const items = callables.map((member) => {
+        const item = new vscode.CompletionItem(member.name, itemKind(member.kind));
+
+        item.insertText = member.name;
+        item.range = range;
+        item.detail = `${kindLabel(member.kind)} · ${member.source} (as *)`;
+
+        return item;
+      });
+
+      return new vscode.CompletionList(items, false);
+    },
+  };
+
+  /**
+   * Custom property names, offered inside the first argument of a `var(...)` call. The names come
+   * from the workspace index and from the document being edited, which the index may not have seen
+   * yet.
+   */
+  const customPropertyProvider: vscode.CompletionItemProvider = {
+    provideCompletionItems(document, position) {
+      if (document.uri.scheme !== 'file') return undefined;
+
+      const text = document.getText();
+      const masked = maskNonCode(text);
+      const offset = document.offsetAt(position);
+      const match = masked.slice(0, offset).match(VAR_FIRST_ARG_RE);
+
+      if (!match) return undefined;
+
+      const typed = match[1];
+
+      // The first argument of `var()` is always a custom property name, so nothing else is offered.
+      if (typed !== '' && !typed.startsWith('-')) return undefined;
+
+      const names = new Set([...index.customPropertyNames(), ...extractCustomProperties(text)]);
+
+      if (names.size === 0) return undefined;
+
+      const start = offset - typed.length;
+      const range = new vscode.Range(document.positionAt(start), document.positionAt(offset));
+      const items = [...names].sort().map((name) => {
+        const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Variable);
+
+        item.insertText = name;
+        item.range = range;
+        item.detail = 'CSS custom property';
+
+        return item;
+      });
+
+      return new vscode.CompletionList(items, false);
     },
   };
 
@@ -679,14 +910,17 @@ export function activate(context: vscode.ExtensionContext): void {
         return entry ? new vscode.Hover(builtinMemberDocs(entry), range) : undefined;
       }
 
-      const resolved = index.resolveModule(statement.url, document.uri.fsPath);
-      const definition = resolved?.file.functions.find((fn) => fn.name === token.name);
+      const resolved = index.resolveModulePath(statement.url, document.uri.fsPath);
 
-      if (!resolved || !definition) return undefined;
+      if (resolved === null) return undefined;
+
+      const definition = index.exportsOf(resolved).functions.find((fn) => fn.name === token.name);
+
+      if (!definition) return undefined;
 
       const markdown = new vscode.MarkdownString(
         [
-          `\`${kindLabel(definition.kind)}\` · ${path.basename(resolved.path)}`,
+          `\`${kindLabel(definition.kind)}\` · ${path.basename(definition.file)}`,
           '',
           '```scss',
           `${token.namespace}.${definition.name}(${signatureOf(definition.params)})`,
@@ -701,6 +935,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(LANGUAGES, paramProvider, '$', ',', '('),
     vscode.languages.registerCompletionItemProvider(LANGUAGES, memberProvider, '.', '$'),
+    vscode.languages.registerCompletionItemProvider(LANGUAGES, globalMemberProvider, '$'),
+    vscode.languages.registerCompletionItemProvider(LANGUAGES, customPropertyProvider, '-'),
     vscode.languages.registerCompletionItemProvider(LANGUAGES, usePathProvider, "'", '"', ':'),
     vscode.languages.registerCompletionItemProvider(LANGUAGES, namespaceProvider),
     vscode.languages.registerHoverProvider(LANGUAGES, hoverProvider),

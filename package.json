@@ -2,7 +2,7 @@
   "name": "sass-scss-completion",
   "displayName": "Sass/SCSS Parameter Completion",
   "description": "Completes Sass function and mixin parameter names in SCSS, Sass, and Vue files.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "boomba286",
   "license": "MIT",
   "repository": {
@@ -93,5 +93,8 @@
   "overrides": {
     "glob": "^14.0.2",
     "minimatch": "^11.0.1"
+  },
+  "dependencies": {
+    "vscode-css-languageservice": "^6.3.10"
   }
 }

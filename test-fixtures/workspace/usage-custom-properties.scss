@@ -1,0 +1,21 @@
+/* Custom properties declared in `:root` and used with `var()`. */
+:root {
+  --main-color: skyblue;
+  --basic-padding: 5px 15px;
+}
+
+/* Completion: the names declared above are suggested inside `var()`. */
+.theme {
+  color: var(--);
+}
+
+/* Warning: nothing declares `--missing`. */
+.wrong {
+  color: var(--missing);
+}
+
+/* No error: a declared name, with or without a fallback. */
+.ok {
+  color: var(--main-color);
+  padding: var(--basic-padding, 0);
+}

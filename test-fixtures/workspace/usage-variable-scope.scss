@@ -1,0 +1,32 @@
+/* Variable scoping: loop variables, parameters, and order-sensitive declarations. */
+$base: 8px;
+
+@each $item in 1 2 3 {
+  .item-#{$item} {
+    margin: $base * $item;
+  }
+}
+
+/* Completion: `$base` and the loop variable `$size` are visible inside the loop. */
+.loop {
+  @each $size in 1 2 {
+    padding: $;
+  }
+}
+
+/* No error: a local variable declared before its use. */
+.local {
+  $gap: 4px;
+  margin: $gap;
+}
+
+/* Error: the loop variable is not in scope outside the loop. */
+.outside {
+  margin: $item;
+}
+
+/* Error: a declaration that appears after its use. */
+.after {
+  width: $later;
+}
+$later: 1px;

@@ -1,0 +1,25 @@
+@use 'definitions' as *;
+
+/* Error: the property does not accept the value. */
+.wrong-name {
+  text-transform: uppercases;
+  display: flexx;
+  color: notacolor;
+  width: abc;
+  text-transform: casinsss();
+}
+
+/* No error: a keyword, a colour function, and a length are all accepted. */
+.correct-name {
+  text-transform: uppercase;
+  display: inline-grid;
+  color: red;
+  color: rgb(0 0 0 / 50%);
+  width: 10px;
+  width: calc(100% - 2px);
+}
+
+/* Error: `casins` is a name nothing defines, so the property does not accept the call. */
+.function-name {
+  text-transform: casins();
+}

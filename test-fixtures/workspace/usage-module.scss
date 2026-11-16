@@ -1,5 +1,7 @@
 @use './tokens' as tokens;
+@use './definitions' as *;
 
 .module {
   margin: tokens.
+  text-transform: 
 }

@@ -3,7 +3,7 @@ import {
   analyzeArgs,
   findMissingRequiredArgs,
   findModuleIssues,
-  findUndefinedVariables,
+  findUndefinedFunctions,
   maskNonCode,
 } from './diagnostics';
 
@@ -103,67 +103,6 @@ describe('findMissingRequiredArgs', () => {
 
     expect(findMissingRequiredArgs(optional)).toEqual([]);
     expect(findMissingRequiredArgs(rest)).toEqual([]);
-  });
-});
-
-describe('findUndefinedVariables', () => {
-  it('reports a variable that is never declared', () => {
-    const source = `.a { width: math.div(12, $ss); }`;
-    const start = source.indexOf('$ss');
-    const issues = findUndefinedVariables(source);
-
-    expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({ start, end: start + '$ss'.length });
-    expect(issues[0].message).toContain('$ss');
-  });
-
-  it('accepts a local declaration that appears later in the file', () => {
-    const source = `.a { width: $gap; }\n$gap: 8px;`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('accepts function and mixin parameters as definitions', () => {
-    const source = `@mixin box($width, $height: 10) {\n  width: $width;\n  height: $height;\n}`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('accepts @each and @for loop variables', () => {
-    const source = `$map: (a: 1);\n@each $name, $value in $map {\n  #{$name}: $value;\n}\n@for $i from 1 through 3 {\n  width: $i;\n}`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('does not treat a namespace member variable as undefined', () => {
-    const source = `@use 'sass:math';\n.a { width: math.$pi; }`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('does not treat a keyword argument as an undefined variable', () => {
-    const source = `.a { width: rem(12, $base: 10); }`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('ignores variables inside strings and comments', () => {
-    const source = `// $ghost\n.a { content: "$ghost"; }`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('does not flag a bare `$` being typed', () => {
-    const source = `.a { width: rem(12, $); }`;
-
-    expect(findUndefinedVariables(source)).toEqual([]);
-  });
-
-  it('accepts names supplied through a global `@use ... as *`', () => {
-    const source = `@use 'tokens' as *;\n.a { width: $gap; }`;
-
-    expect(findUndefinedVariables(source)).toHaveLength(1);
-    expect(findUndefinedVariables(source, new Set(['gap']))).toEqual([]);
   });
 });
 
@@ -288,5 +227,63 @@ describe('findModuleIssues', () => {
     const source = `@use 'definitions' as d;\n.a { width: d.rem(12); }`;
 
     expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+});
+
+describe('findUndefinedFunctions', () => {
+  it('reports a call to a function nothing defines', () => {
+    const source = `@function f($x) {\n  @return casins($x);\n}`;
+    const start = source.indexOf('casins');
+    const issues = findUndefinedFunctions(source, new Set());
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ start, end: start + 'casins($x)'.length });
+    expect(issues[0].message).toBe('Undefined function casins.');
+  });
+
+  it('reports an undefined function in a variable value', () => {
+    const source = `$gap: casins(1);`;
+
+    expect(findUndefinedFunctions(source, new Set())).toHaveLength(1);
+  });
+
+  it('accepts a name supplied by the caller', () => {
+    expect(findUndefinedFunctions(`$c: darken(#fff, 10%);`, new Set(['darken']))).toEqual([]);
+  });
+
+  it('does not report a call inside a declaration value', () => {
+    const source = `.a { text-transform: casins(); }`;
+    const start = source.indexOf('casins');
+    const ranges = [{ start, end: start + 'casins()'.length }];
+
+    expect(findUndefinedFunctions(source, new Set(), ranges)).toEqual([]);
+    expect(findUndefinedFunctions(source, new Set())).toHaveLength(1);
+  });
+
+  it('does not report an @include call or a mixin/function header', () => {
+    const source = `@mixin box($w) { width: $w; }\n.a { @include box(1px); }`;
+
+    expect(findUndefinedFunctions(source, new Set())).toEqual([]);
+  });
+
+  it('does not report a pseudo-class or a namespaced call', () => {
+    expect(findUndefinedFunctions(`.a:not(.b) { color: red; }`, new Set())).toEqual([]);
+    expect(findUndefinedFunctions(`@function f() {\n  @return math.div(1, 2);\n}`, new Set())).toEqual(
+      [],
+    );
+  });
+
+  it('ignores calls inside strings and comments', () => {
+    const source = `// casins()\n.a { content: "casins()"; }`;
+
+    expect(findUndefinedFunctions(source, new Set())).toEqual([]);
+  });
+
+  it('skips a call whose parentheses are not closed yet', () => {
+    expect(findUndefinedFunctions(`$x: casins(`, new Set())).toEqual([]);
+  });
+
+  it('reports nothing for an empty document', () => {
+    expect(findUndefinedFunctions('', new Set())).toEqual([]);
   });
 });

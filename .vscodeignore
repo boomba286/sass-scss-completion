@@ -11,5 +11,4 @@ test-fixtures/**
 dist/test/**
 .vscode-test/**
 .gitignore
-node_modules/**
 *.vsix

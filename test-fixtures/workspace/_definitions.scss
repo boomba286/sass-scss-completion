@@ -6,3 +6,8 @@
   width: $width;
   height: $height;
 }
+
+@function casing() {
+  @return 'uppercase';
+}
+

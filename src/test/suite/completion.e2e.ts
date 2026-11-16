@@ -3,6 +3,9 @@ import * as vscode from 'vscode';
 
 const OUR_DETAIL = /@(function|mixin) ·/;
 const NAMESPACE_DETAIL = /@use ·/;
+const GLOBAL_DETAIL = /\(as \*\)/;
+const CUSTOM_PROPERTY_DETAIL = /CSS custom property/;
+const SCOPE_VARIABLE_DETAIL = /SCSS variable/;
 
 function workspaceUri(): vscode.Uri {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -110,9 +113,29 @@ suite('Sass/SCSS parameter completion (E2E)', () => {
   });
 
   test('lists workspace module members resolved from @use', async () => {
-    const labels = await suggestLabelsAt('usage-module.scss', 3, 17, '.');
+    const labels = await suggestLabelsAt('usage-module.scss', 4, 17, '.');
     assert.ok(labels.includes('scale'), `expected scale, got [${labels.join(', ')}]`);
     assert.ok(labels.includes('flex-center'), `expected flex-center, got [${labels.join(', ')}]`);
+  });
+
+  test('lists the members a module re-exports with @forward after a namespace dot', async () => {
+    // `users-missing-variables.scss` uses `./forward`, which only re-exports other files.
+    const labels = await suggestLabelsAt('users-missing-variables.scss', 3, 31, '.');
+    assert.ok(labels.includes('scale'), `expected scale, got [${labels.join(', ')}]`);
+    assert.ok(labels.includes('flex-center'), `expected flex-center, got [${labels.join(', ')}]`);
+    assert.ok(labels.includes('rem'), `expected rem, got [${labels.join(', ')}]`);
+  });
+
+  test('lists the variables a module loads with @use ... as *', async () => {
+    const labels = await suggestLabelsAt(
+      'users-missing-variables.scss',
+      3,
+      7,
+      '$',
+      GLOBAL_DETAIL,
+    );
+    assert.ok(labels.includes('$colors'), `expected $colors, got [${labels.join(', ')}]`);
+    assert.ok(labels.includes('$spacing'), `expected $spacing, got [${labels.join(', ')}]`);
   });
 
   test('suggests a loaded namespace by its prefix', async () => {
@@ -170,6 +193,81 @@ suite('Sass/SCSS parameter completion (E2E)', () => {
     assert.deepStrictEqual(messages.sort(), [
       'Missing required argument(s) $value in the call to d.rem.',
       'Missing required argument(s) $width in the call to d.box.',
+    ]);
+    assert.ok(
+      diagnostics.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
+      'expected every diagnostic to be an error',
+    );
+  });
+
+  test('reports an unknown CSS property value and accepts keywords, functions, and lengths', async () => {
+    const diagnostics = await waitForDiagnostics('usage-missing-properties.scss', 6);
+    const messages = diagnostics.map((diagnostic) => diagnostic.message).sort();
+
+    assert.deepStrictEqual(messages, [
+      "Unknown value 'abc' for property 'width'.",
+      "Unknown value 'casins()' for property 'text-transform'.",
+      "Unknown value 'casinsss()' for property 'text-transform'.",
+      "Unknown value 'flexx' for property 'display'.",
+      "Unknown value 'notacolor' for property 'color'.",
+      "Unknown value 'uppercases' for property 'text-transform'.",
+    ]);
+    assert.ok(
+      diagnostics.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
+      'expected every diagnostic to be an error',
+    );
+  });
+
+  test('suggests the custom properties declared in the workspace inside var()', async () => {
+    const labels = await suggestLabelsAt(
+      'usage-custom-properties.scss',
+      8,
+      15,
+      '-',
+      CUSTOM_PROPERTY_DETAIL,
+    );
+
+    assert.ok(labels.includes('--main-color'), `expected --main-color, got [${labels.join(', ')}]`);
+    assert.ok(
+      labels.includes('--basic-padding'),
+      `expected --basic-padding, got [${labels.join(', ')}]`,
+    );
+  });
+
+  test('warns about a var() use of a custom property nothing declares', async () => {
+    const diagnostics = await waitForDiagnostics('usage-custom-properties.scss', 1);
+    const messages = diagnostics.map((diagnostic) => diagnostic.message).sort();
+
+    assert.deepStrictEqual(messages, ['Unknown custom property --missing.']);
+    assert.ok(
+      diagnostics.every(
+        (diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Warning,
+      ),
+      'expected every diagnostic to be a warning',
+    );
+  });
+
+  test('suggests the root and loop variables in scope where a `$` is typed', async () => {
+    const labels = await suggestLabelsAt(
+      'usage-variable-scope.scss',
+      12,
+      14,
+      '$',
+      SCOPE_VARIABLE_DETAIL,
+    );
+
+    assert.ok(labels.includes('$base'), `expected $base, got [${labels.join(', ')}]`);
+    assert.ok(labels.includes('$size'), `expected $size, got [${labels.join(', ')}]`);
+    assert.ok(!labels.includes('$item'), `did not expect $item, got [${labels.join(', ')}]`);
+  });
+
+  test('reports out-of-scope and out-of-order variable uses', async () => {
+    const diagnostics = await waitForDiagnostics('usage-variable-scope.scss', 2);
+    const messages = diagnostics.map((diagnostic) => diagnostic.message).sort();
+
+    assert.deepStrictEqual(messages, [
+      'Used undefined variable $item.',
+      'Used undefined variable $later.',
     ]);
     assert.ok(
       diagnostics.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
