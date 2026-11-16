@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 const OUR_DETAIL = /@(function|mixin) ·/;
 const NAMESPACE_DETAIL = /@use ·/;
 const GLOBAL_DETAIL = /\(as \*\)/;
+const MEMBER_VARIABLE_DETAIL = /@variable ·/;
 const CUSTOM_PROPERTY_DETAIL = /CSS custom property/;
 const SCOPE_VARIABLE_DETAIL = /SCSS variable/;
 
@@ -124,6 +125,23 @@ suite('Sass/SCSS parameter completion (E2E)', () => {
     assert.ok(labels.includes('scale'), `expected scale, got [${labels.join(', ')}]`);
     assert.ok(labels.includes('flex-center'), `expected flex-center, got [${labels.join(', ')}]`);
     assert.ok(labels.includes('rem'), `expected rem, got [${labels.join(', ')}]`);
+  });
+
+  test('lists the variables a module re-exports with @forward after a namespace dot', async () => {
+    const labels = await suggestLabelsAt(
+      'users-missing-variables.scss',
+      3,
+      31,
+      '.',
+      MEMBER_VARIABLE_DETAIL,
+    );
+    assert.ok(labels.includes('$spacing'), `expected $spacing, got [${labels.join(', ')}]`);
+    assert.ok(labels.includes('$colors'), `expected $colors, got [${labels.join(', ')}]`);
+  });
+
+  test('lists the variables of a built-in module after a namespace dot', async () => {
+    const labels = await suggestLabelsAt('usage-builtin.scss', 4, 14, '.', MEMBER_VARIABLE_DETAIL);
+    assert.ok(labels.includes('$pi'), `expected $pi, got [${labels.join(', ')}]`);
   });
 
   test('lists the variables a module loads with @use ... as *', async () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed `namespace.` completion to include the module's variables, so `namespace.` now lists variables together with the functions and mixins. Previously a variable was offered only after `namespace.$`.
+
 ## 0.2.0
 
 - Added completion for the members a module re-exports with `@forward`: `namespace.` and `namespace.$` now include the functions, mixins, and variables of the forwarded files, resolved recursively.

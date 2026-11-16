@@ -371,8 +371,11 @@ function builtinMemberItems(
   context: MemberContext,
   range: vscode.Range,
 ): vscode.CompletionItem[] {
-  if (context.variable) {
-    return (BUILTIN_VARIABLES[moduleId] ?? []).map((variable) => {
+  const items: vscode.CompletionItem[] = [];
+
+  // `ns.$` lists variables only; `ns.` lists variables together with the callables.
+  if (context.variable || context.prefix === '') {
+    for (const variable of BUILTIN_VARIABLES[moduleId] ?? []) {
       const item = new vscode.CompletionItem(`$${variable.name}`, vscode.CompletionItemKind.Variable);
 
       item.insertText = `$${variable.name}`;
@@ -382,20 +385,25 @@ function builtinMemberItems(
         `${variable.description}\n\n[Docs](${BUILTIN_MODULE_URLS[moduleId]})`,
       );
 
-      return item;
-    });
+      items.push(item);
+    }
   }
 
-  return listBuiltinMembers(moduleId).map((entry) => {
-    const item = new vscode.CompletionItem(entry.name, itemKind(entry.kind));
+  // A `$` means the user is naming a variable, so callables are left out.
+  if (!context.variable) {
+    for (const entry of listBuiltinMembers(moduleId)) {
+      const item = new vscode.CompletionItem(entry.name, itemKind(entry.kind));
 
-    item.insertText = entry.name;
-    item.range = range;
-    item.detail = `${kindLabel(entry.kind)} · sass:${moduleId} ${moduleId}.${entry.name}(${formatSignature(entry)})`;
-    item.documentation = builtinMemberDocs(entry);
+      item.insertText = entry.name;
+      item.range = range;
+      item.detail = `${kindLabel(entry.kind)} · sass:${moduleId} ${moduleId}.${entry.name}(${formatSignature(entry)})`;
+      item.documentation = builtinMemberDocs(entry);
 
-    return item;
-  });
+      items.push(item);
+    }
+  }
+
+  return items;
 }
 
 /** Completion items for workspace module members (functions, mixins, variables). */
@@ -406,28 +414,35 @@ function workspaceMemberItems(
   range: vscode.Range,
 ): vscode.CompletionItem[] {
   const label = path.basename(filePath);
+  const items: vscode.CompletionItem[] = [];
 
-  if (context.variable) {
-    return exports.variables.map((name) => {
+  // `ns.$` lists variables only; `ns.` lists variables together with the callables.
+  if (context.variable || context.prefix === '') {
+    for (const name of exports.variables) {
       const item = new vscode.CompletionItem(`$${name}`, vscode.CompletionItemKind.Variable);
 
       item.insertText = `$${name}`;
       item.range = range;
       item.detail = `@variable · ${label}`;
 
-      return item;
-    });
+      items.push(item);
+    }
   }
 
-  return exports.functions.map((definition) => {
-    const item = new vscode.CompletionItem(definition.name, itemKind(definition.kind));
+  // A `$` means the user is naming a variable, so callables are left out.
+  if (!context.variable) {
+    for (const definition of exports.functions) {
+      const item = new vscode.CompletionItem(definition.name, itemKind(definition.kind));
 
-    item.insertText = definition.name;
-    item.range = range;
-    item.detail = `${kindLabel(definition.kind)} · ${label}(${signatureOf(definition.params)})`;
+      item.insertText = definition.name;
+      item.range = range;
+      item.detail = `${kindLabel(definition.kind)} · ${label}(${signatureOf(definition.params)})`;
 
-    return item;
-  });
+      items.push(item);
+    }
+  }
+
+  return items;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
