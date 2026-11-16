@@ -1,0 +1,13 @@
+@use 'definitions' as d;
+
+.unknown-function {
+  width: d.rem2(12);
+}
+
+.unknown-mixin {
+  @include d.box2(1);
+}
+
+.unknown-variable {
+  height: d.$missing;
+}

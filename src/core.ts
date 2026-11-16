@@ -15,6 +15,8 @@ export interface Signature {
   kind: SignatureKind;
   name: string;
   params: string[];
+  /** Parameter names that have no default value and are not variadic, in declaration order. */
+  required: string[];
 }
 
 function isIdentChar(ch: string | undefined): boolean {
@@ -121,16 +123,31 @@ export function splitTopLevel(input: string): string[] {
   return parts;
 }
 
-/** Extracts only parameter names from a signature string ("$value, $base: 16"). */
-export function parseParams(signature: string): string[] {
+/** A parameter segment that declares a default value, e.g. `$height: 10`. */
+const DEFAULT_PARAM_RE = /^\$[A-Za-z0-9_-]+\s*:/;
+
+/** A variadic parameter segment, e.g. `$args...`. */
+const VARIADIC_PARAM_RE = /\.\.\.\s*$/;
+
+/** Splits a signature string into parameter names and the subset that cannot be omitted. */
+function parseSignatureParams(signature: string): { params: string[]; required: string[] } {
   const params: string[] = [];
+  const required: string[] = [];
 
   for (const part of splitTopLevel(signature)) {
     const match = part.match(/\$([A-Za-z0-9_-]+)/);
-    if (match) params.push(match[1]);
+
+    if (!match) continue;
+
+    params.push(match[1]);
+
+    const trimmed = part.trim();
+    const optional = DEFAULT_PARAM_RE.test(trimmed) || VARIADIC_PARAM_RE.test(trimmed);
+
+    if (!optional) required.push(match[1]);
   }
 
-  return params;
+  return { params, required };
 }
 
 /** Collects all @function / @mixin signatures from the file text. */
@@ -160,10 +177,13 @@ export function extractSignatures(text: string): Signature[] {
     if (closeParen === -1) continue;
 
     const signature = text.slice(openParen + 1, closeParen);
+    const { params, required } = parseSignatureParams(signature);
+
     found.push({
       kind: match[1] as SignatureKind,
       name: match[2],
-      params: parseParams(signature),
+      params,
+      required,
     });
   }
 

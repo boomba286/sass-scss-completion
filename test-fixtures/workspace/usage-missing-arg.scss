@@ -1,0 +1,14 @@
+@use 'definitions' as d;
+
+.missing-function-arg {
+  width: d.rem();
+}
+
+.missing-mixin-arg {
+  @include d.box();
+}
+
+.supplied {
+  width: d.rem(12);
+  height: d.rem($value: 12);
+}

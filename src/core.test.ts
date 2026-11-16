@@ -27,6 +27,32 @@ describe('extractSignatures', () => {
       { kind: 'mixin', name: 'box', params: ['width', 'height'] },
     ]);
   });
+
+  it('treats parameters without a default value as required', () => {
+    const source = `@function rem($value, $base: 16) { @return $value; }`;
+
+    expect(extractSignatures(source).map(({ required }) => required)).toEqual([['value']]);
+  });
+
+  it('treats variadic and defaulted parameters as optional', () => {
+    const source = `
+      @mixin box($width, $height: 10, $shadows...) {}
+      @mixin pad($gap: 0) {}
+    `;
+
+    expect(extractSignatures(source).map(({ params, required }) => ({ params, required }))).toEqual([
+      { params: ['width', 'height', 'shadows'], required: ['width'] },
+      { params: ['gap'], required: [] },
+    ]);
+  });
+
+  it('keeps a default value containing commas or parentheses out of the required list', () => {
+    const source = `@function size($list: (1, 2), $factor: math.div(16, 2)) {}`;
+
+    expect(extractSignatures(source).map(({ params, required }) => ({ params, required }))).toEqual([
+      { params: ['list', 'factor'], required: [] },
+    ]);
+  });
 });
 
 describe('suggestParams', () => {

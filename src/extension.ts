@@ -11,6 +11,7 @@ import {
   type CallSite,
   type MemberContext,
   type Signature,
+  type SignatureKind,
 } from './core';
 import {
   findBuiltinFunction,
@@ -25,7 +26,14 @@ import {
   type BuiltinFunction,
 } from './builtin-modules';
 import { builtinModuleId, loadedNamespaces, moduleFileCandidates, parseUseStatements } from './modules';
-import { findMissingRequiredArgs, findUndefinedVariables, maskNonCode } from './diagnostics';
+import {
+  findMissingRequiredArgs,
+  findModuleIssues,
+  findUndefinedVariables,
+  maskNonCode,
+  type ModuleMember,
+  type ModuleMembers,
+} from './diagnostics';
 
 const GLOB = '**/*.{scss,sass}';
 const CONFIG_SECTION = 'sass-scss-completion';
@@ -96,11 +104,29 @@ interface IndexedSignature extends Signature {
 interface IndexedFile {
   functions: IndexedSignature[];
   variables: string[];
+  /** True when the file re-exports other files with `@forward`, so its own member list is incomplete. */
+  forwarded: boolean;
 }
 
 /** Module basename with the partial prefix/extension removed. */
 function moduleBase(filePath: string): string {
   return path.basename(filePath).replace(/^_/, '').replace(/\.(scss|sass|css)$/i, '');
+}
+
+/** Indexes the signatures of one kind by name, keeping the parameter and required-parameter lists. */
+function memberIndex(signatures: IndexedSignature[], kind: SignatureKind): Map<string, ModuleMember> {
+  const members = new Map<string, ModuleMember>();
+
+  for (const signature of signatures) {
+    if (signature.kind !== kind) continue;
+
+    members.set(signature.name, {
+      params: signature.params,
+      required: new Set(signature.required),
+    });
+  }
+
+  return members;
 }
 
 /** Collects @function / @mixin signatures and variables from the workspace, indexed by name/file. */
@@ -133,6 +159,7 @@ class SignatureIndex {
       files.set(uri.fsPath, {
         functions: signatures.map((signature) => ({ ...signature, file: uri.fsPath })),
         variables: extractVariables(text),
+        forwarded: /@forward\b/.test(maskNonCode(text)),
       });
 
       for (const signature of signatures) {
@@ -381,13 +408,40 @@ export function activate(context: vscode.ExtensionContext): void {
     return names;
   };
 
-  /** Shows document errors (missing required arguments, undefined variables) as diagnostics. */
+  /** Members of the workspace modules loaded with `@use`, keyed by namespace. */
+  const workspaceModules = (
+    text: string,
+    document: vscode.TextDocument,
+  ): Map<string, ModuleMembers> => {
+    const modules = new Map<string, ModuleMembers>();
+
+    for (const use of parseUseStatements(text)) {
+      if (use.global || !use.namespace) continue;
+      if (builtinModuleId(use.url)) continue;
+
+      const resolved = index.resolveModule(use.url, document.uri.fsPath);
+
+      // A module that re-exports through `@forward` has members this index cannot see.
+      if (!resolved || resolved.file.forwarded) continue;
+
+      modules.set(use.namespace, {
+        functions: memberIndex(resolved.file.functions, 'function'),
+        mixins: memberIndex(resolved.file.functions, 'mixin'),
+        variables: new Set(resolved.file.variables),
+      });
+    }
+
+    return modules;
+  };
+
+  /** Shows document errors (missing required arguments, unknown members, undefined variables) as diagnostics. */
   const updateDiagnostics = (document: vscode.TextDocument): void => {
     if (document.languageId !== 'scss' && document.languageId !== 'sass') return;
 
     const text = document.getText();
     const issues = [
       ...findMissingRequiredArgs(text),
+      ...findModuleIssues(text, workspaceModules(text, document)),
       ...findUndefinedVariables(text, globalVariables(text, document)),
     ];
     const diagnostics = issues.map((issue) => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeArgs,
   findMissingRequiredArgs,
+  findModuleIssues,
   findUndefinedVariables,
   maskNonCode,
 } from './diagnostics';
@@ -163,5 +164,129 @@ describe('findUndefinedVariables', () => {
 
     expect(findUndefinedVariables(source)).toHaveLength(1);
     expect(findUndefinedVariables(source, new Set(['gap']))).toEqual([]);
+  });
+});
+
+describe('findModuleIssues', () => {
+  const modules = new Map([
+    [
+      'd',
+      {
+        functions: new Map([['rem', { params: ['value', 'base'], required: new Set(['value']) }]]),
+        mixins: new Map([['box', { params: ['width', 'height'], required: new Set(['width']) }]]),
+        variables: new Set(['gap']),
+      },
+    ],
+  ]);
+
+  it('reports a function the module does not export', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem2(12); }`;
+    const start = source.indexOf('d.rem2');
+    const issues = findModuleIssues(source, modules);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ start, end: start + 'd.rem2(12)'.length });
+    expect(issues[0].message).toBe('Undefined function d.rem2.');
+  });
+
+  it('accepts a function the module exports', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem(12); }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('reports an unknown mixin after `@include`', () => {
+    const source = `@use 'definitions' as d;\n.a { @include d.box2(1); }`;
+
+    expect(findModuleIssues(source, modules)[0]?.message).toBe('Undefined mixin d.box2.');
+  });
+
+  it('accepts a mixin the module exports', () => {
+    const source = `@use 'definitions' as d;\n.a { @include d.box(1); }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('reports a mixin name used as a function call', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.box(1); }`;
+
+    expect(findModuleIssues(source, modules)[0]?.message).toBe('Undefined function d.box.');
+  });
+
+  it('reports a member variable the module does not export', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.$spacing; }`;
+    const start = source.indexOf('d.$spacing');
+
+    expect(findModuleIssues(source, modules)).toMatchObject([
+      { start, end: start + 'd.$spacing'.length, message: 'Undefined variable d.$spacing.' },
+    ]);
+  });
+
+  it('accepts a member variable the module exports', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.$gap; }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('ignores namespaces that were not resolved to a module', () => {
+    const source = `.a { width: math.div(1); }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('ignores members inside strings and comments', () => {
+    const source = `// d.rem2(12)\n.a { content: "d.rem2(12)"; }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('skips a call whose parentheses are not closed yet', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem2(`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('returns nothing when no module was resolved', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem2(12); }`;
+
+    expect(findModuleIssues(source, new Map())).toEqual([]);
+  });
+
+  it('reports a call that omits a required argument', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem(); }`;
+    const start = source.indexOf('d.rem()');
+    const issues = findModuleIssues(source, modules);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ start, end: start + 'd.rem()'.length });
+    expect(issues[0].message).toBe('Missing required argument(s) $value in the call to d.rem.');
+  });
+
+  it('reports only the required arguments a call omits', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem($base: 16); }`;
+
+    expect(findModuleIssues(source, modules)[0]?.message).toBe(
+      'Missing required argument(s) $value in the call to d.rem.',
+    );
+  });
+
+  it('reports a mixin call that omits a required argument', () => {
+    const source = `@use 'definitions' as d;\n.a { @include d.box(); }`;
+
+    expect(findModuleIssues(source, modules)[0]?.message).toBe(
+      'Missing required argument(s) $width in the call to d.box.',
+    );
+  });
+
+  it('accepts a required argument supplied by keyword', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem($value: 12); }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
+  });
+
+  it('accepts a call that omits only optional arguments', () => {
+    const source = `@use 'definitions' as d;\n.a { width: d.rem(12); }`;
+
+    expect(findModuleIssues(source, modules)).toEqual([]);
   });
 });

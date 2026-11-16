@@ -13,6 +13,9 @@ const CALL_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.([A-Za-z0-9_-]+)\s*\(/g;
 /** Finds `$name` references/declarations. */
 const VARIABLE_RE = /\$([A-Za-z0-9_-]+)/g;
 
+/** Finds `namespace.$name` member variable accesses. */
+const MEMBER_VARIABLE_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.\$([A-Za-z0-9_-]+)/g;
+
 export interface DiagnosticIssue {
   /** Start offset within the document. */
   start: number;
@@ -168,6 +171,125 @@ export function findMissingRequiredArgs(text: string): DiagnosticIssue[] {
       message: `Missing required argument(s) ${missing
         .map((param) => `$${param}`)
         .join(', ')} in the call to ${namespace}.${name}.`,
+    });
+  }
+
+  return issues;
+}
+
+/** A function or mixin exported by a workspace module, as seen by the index. */
+export interface ModuleMember {
+  /** Parameter names in declaration order. */
+  params: readonly string[];
+  /** Parameter names that have no default value and are not variadic. */
+  required: ReadonlySet<string>;
+}
+
+/** The members a workspace module exports, as seen by the index. */
+export interface ModuleMembers {
+  functions: ReadonlyMap<string, ModuleMember>;
+  mixins: ReadonlyMap<string, ModuleMember>;
+  variables: ReadonlySet<string>;
+}
+
+/** Matches an `@include` keyword directly in front of a call. */
+const INCLUDE_RE = /@include\s+$/;
+
+/**
+ * Required parameter names the call does not fill. Positional arguments fill parameters from the
+ * front, and keyword arguments (`$name:`) fill them by name.
+ */
+function missingRequiredArgs(
+  member: ModuleMember,
+  positional: number,
+  keywords: ReadonlySet<string>,
+): string[] {
+  const missing: string[] = [];
+  let filled = 0;
+
+  for (const param of member.params) {
+    if (filled < positional) {
+      filled += 1;
+      continue;
+    }
+
+    if (keywords.has(param)) continue;
+    if (!member.required.has(param)) continue;
+
+    missing.push(param);
+  }
+
+  return missing;
+}
+
+/**
+ * Finds issues in calls into the workspace modules listed in `modules`: references to members the
+ * module does not export (`ns.unknown(...)`, `@include ns.unknown(...)`, `ns.$unknown`), and calls
+ * that omit a required argument. Only the namespaces present in `modules` are checked, so the
+ * caller decides which `@use`d workspace modules were resolved; built-in namespaces must not be
+ * passed in.
+ */
+export function findModuleIssues(
+  text: string,
+  modules: ReadonlyMap<string, ModuleMembers>,
+): DiagnosticIssue[] {
+  if (modules.size === 0) return [];
+
+  const masked = maskNonCode(text);
+  const issues: DiagnosticIssue[] = [];
+
+  CALL_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = CALL_RE.exec(masked)) !== null) {
+    const members = modules.get(match[1]);
+
+    if (!members) continue;
+
+    const name = match[2];
+    const mixin = INCLUDE_RE.test(masked.slice(0, match.index));
+    const openParen = match.index + match[0].length - 1;
+    const closeParen = findCloseParen(masked, openParen);
+
+    // Skip a call whose parentheses are not closed yet (still being typed).
+    if (closeParen === -1) continue;
+
+    const member = (mixin ? members.mixins : members.functions).get(name);
+
+    if (!member) {
+      issues.push({
+        start: match.index,
+        end: closeParen + 1,
+        message: `Undefined ${mixin ? 'mixin' : 'function'} ${match[1]}.${name}.`,
+      });
+      continue;
+    }
+
+    const { positional, keywords } = analyzeArgs(text.slice(openParen + 1, closeParen));
+    const missing = missingRequiredArgs(member, positional, keywords);
+
+    if (missing.length === 0) continue;
+
+    issues.push({
+      start: match.index,
+      end: closeParen + 1,
+      message: `Missing required argument(s) ${missing
+        .map((param) => `$${param}`)
+        .join(', ')} in the call to ${match[1]}.${name}.`,
+    });
+  }
+
+  MEMBER_VARIABLE_RE.lastIndex = 0;
+
+  while ((match = MEMBER_VARIABLE_RE.exec(masked)) !== null) {
+    const members = modules.get(match[1]);
+
+    if (!members || members.variables.has(match[2])) continue;
+
+    issues.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      message: `Undefined variable ${match[1]}.$${match[2]}.`,
     });
   }
 

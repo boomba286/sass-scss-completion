@@ -141,6 +141,42 @@ suite('Sass/SCSS parameter completion (E2E)', () => {
     assert.strictEqual(undefinedIssue.severity, vscode.DiagnosticSeverity.Error);
   });
 
+  test('reports members a workspace module does not export', async () => {
+    const diagnostics = await waitForDiagnostics('usage-unknown-member.scss', 3);
+    const messages = diagnostics.map((diagnostic) => diagnostic.message);
+
+    assert.ok(
+      messages.includes('Undefined function d.rem2.'),
+      `expected the unknown function, got [${messages.join(', ')}]`,
+    );
+    assert.ok(
+      messages.includes('Undefined mixin d.box2.'),
+      `expected the unknown mixin, got [${messages.join(', ')}]`,
+    );
+    assert.ok(
+      messages.includes('Undefined variable d.$missing.'),
+      `expected the unknown variable, got [${messages.join(', ')}]`,
+    );
+    assert.ok(
+      diagnostics.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
+      'expected every diagnostic to be an error',
+    );
+  });
+
+  test('reports a call that omits a required argument of a workspace module', async () => {
+    const diagnostics = await waitForDiagnostics('usage-missing-arg.scss', 2);
+    const messages = diagnostics.map((diagnostic) => diagnostic.message);
+
+    assert.deepStrictEqual(messages.sort(), [
+      'Missing required argument(s) $value in the call to d.rem.',
+      'Missing required argument(s) $width in the call to d.box.',
+    ]);
+    assert.ok(
+      diagnostics.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
+      'expected every diagnostic to be an error',
+    );
+  });
+
   test('shows built-in function documentation on hover', async () => {
     const uri = fileUri('usage-builtin.scss');
     await vscode.workspace.openTextDocument(uri);
