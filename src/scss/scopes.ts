@@ -56,7 +56,7 @@ const CALLABLE_RE = /@(?:function|mixin)\s+[A-Za-z0-9_-]+\s*\(/g;
 const VARIABLE_RE = /\$([A-Za-z0-9_-]+)/g;
 
 /** Index just past the `}` matching the interpolation that starts at the `#{` at `hash`. */
-function skipInterpolation(masked: string, hash: number): number {
+export function skipInterpolation(masked: string, hash: number): number {
   let depth = 0;
   let i = hash + 1;
 

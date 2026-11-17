@@ -1,0 +1,6 @@
+// A second group that defines a class the other stylesheet defines too, so a suggestion carries the
+// labels of both. Kept apart from the other fixtures so their diagnostics stay unaffected.
+
+.btn {
+  color: blue;
+}

@@ -7,8 +7,13 @@ scripts/**
 src/**
 **/*.test.ts
 tsconfig.json
+vitest.config.mts
 test-fixtures/**
+packages/**
+docs/**
 dist/test/**
+dist/**/*.map
 .vscode-test/**
 .gitignore
+CONTRIBUTING.md
 *.vsix

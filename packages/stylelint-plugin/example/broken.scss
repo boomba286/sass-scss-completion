@@ -1,0 +1,18 @@
+// Each rule in this package reports once in this file. `verify:example` lints it and prints the
+// five warnings below.
+
+@use 'sass:map';
+
+$brand: #f00;
+$options: (primary: 1);
+
+.card {
+  display: flexx; // property-value-no-unknown
+  color: var(--missing); // no-undefined-custom-property
+  width: $undefined-width; // no-undefined-variable
+}
+
+.metrics {
+  $first: map.get($options); // missing-required-arguments
+  $second: nope(1); // no-undefined-function
+}

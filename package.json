@@ -1,8 +1,8 @@
 {
   "name": "sass-scss-completion",
-  "displayName": "Sass/SCSS Parameter Completion",
-  "description": "Completes Sass function and mixin parameter names in SCSS, Sass, and Vue files.",
-  "version": "0.2.1",
+  "displayName": "Sass/SCSS IntelliSense",
+  "description": "Completes Sass function and mixin parameters in SCSS, Sass, and Vue files, and the selectors a stylesheet defines in HTML, Vue, Svelte, and Astro templates.",
+  "version": "0.3.0",
   "publisher": "boomba286",
   "license": "MIT",
   "repository": {
@@ -35,7 +35,10 @@
   "activationEvents": [
     "onLanguage:scss",
     "onLanguage:sass",
-    "onLanguage:vue"
+    "onLanguage:vue",
+    "onLanguage:html",
+    "onLanguage:svelte",
+    "onLanguage:astro"
   ],
   "contributes": {
     "languages": [
@@ -51,7 +54,7 @@
       }
     ],
     "configuration": {
-      "title": "Sass/SCSS Parameter Completion",
+      "title": "Sass/SCSS IntelliSense",
       "properties": {
         "sass-scss-completion.exclude": {
           "type": "array",
@@ -64,6 +67,60 @@
             [
               "vendor-legacy",
               "**/generated/**"
+            ]
+          ]
+        },
+        "sass-scss-completion.groups": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Pairs the stylesheets that define selectors (`styles`) with the templates those selectors are completed into (`targets`). When the list is empty, every stylesheet in the workspace is offered to every template, and each suggestion shows the folder and file name of its stylesheet.",
+          "items": {
+            "type": "object",
+            "required": [
+              "styles",
+              "targets"
+            ],
+            "properties": {
+              "styles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "markdownDescription": "Glob patterns for the stylesheets that supply the selectors of this group, for example `assets/theme/**/*.scss` or `public/**/*.css`. SCSS, Sass, and CSS files are read."
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "markdownDescription": "Glob patterns for the template files this group applies to, for example `src/**/*.vue`. An empty list applies the group to every template."
+              },
+              "label": {
+                "type": "string",
+                "markdownDescription": "Text shown to the right of each suggestion. Defaults to the folder and file name of the stylesheet that defines the selector."
+              }
+            }
+          },
+          "examples": [
+            [
+              {
+                "styles": [
+                  "assets/theme/**/*.scss"
+                ],
+                "targets": [
+                  "src/**/*.vue"
+                ],
+                "label": "theme"
+              },
+              {
+                "styles": [
+                  "assets/admin/**/*.scss"
+                ],
+                "targets": [
+                  "src/admin/**/*.html"
+                ],
+                "label": "admin"
+              }
             ]
           ]
         }

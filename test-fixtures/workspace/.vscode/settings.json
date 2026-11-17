@@ -1,3 +1,37 @@
 {
-  "scss.validate": false
+  "scss.validate": false,
+  "sass-scss-completion.exclude": [
+    "legacy",
+    "**/generated/**"
+  ],
+  "sass-scss-completion.groups": [
+    {
+      "styles": [
+        "packages/theme/**/*.scss"
+      ],
+      "targets": [
+        "apps/web/**/*.vue"
+      ],
+      "label": "web"
+    },
+    {
+      "styles": [
+        "packages/ui/**/*.scss"
+      ],
+      "targets": [
+        "apps/**/*.{vue,html}"
+      ],
+      "label": "ui"
+    },
+    {
+      "styles": [
+        "*.scss",
+        "*.css"
+      ],
+      "targets": [
+        "template.html",
+        "template.vue"
+      ]
+    }
+  ]
 }

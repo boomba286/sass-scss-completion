@@ -1,4 +1,4 @@
-# Sass/SCSS Parameter Completion
+# Sass/SCSS IntelliSense
 
 [![CI](https://img.shields.io/github/actions/workflow/status/boomba286/sass-scss-completion/ci.yml?label=CI)](https://github.com/boomba286/sass-scss-completion/actions/workflows/ci.yml)
 [![Visual Studio Code](https://img.shields.io/badge/VS%20Code-%5E1.75.0-007ACC)](https://code.visualstudio.com/)
@@ -6,7 +6,9 @@
 [![Dart Sass](https://img.shields.io/badge/Dart%20Sass-%E2%89%A51.79-CF649A?logo=sass&logoColor=white)](https://sass-lang.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/boomba286/sass-scss-completion/blob/main/LICENSE)
 
-🚀 Autocomplete parameter names for Sass functions and mixins in the `.scss` and `.sass` files of any project — React, Angular, Vue, or plain HTML.
+🚀 Autocomplete and diagnostics for the Sass a project defines: parameter names for functions and mixins, the members of the modules you `@use`, and the CSS custom properties of the workspace.
+
+🏷️ The class, id, and attribute names your stylesheets define are suggested inside the `class`, `id`, and other attributes of an HTML, Vue, Svelte, or Astro template.
 
 ✨ Parameters you have already passed by name are never suggested twice, and preceding positional arguments are taken into account. Built-in Sass modules (`sass:math`, `sass:color`, …) are supported out of the box, and so are the functions, mixins, and variables you `@use` from your own files.
 
@@ -51,6 +53,16 @@
 - ✅ Inside `var(...)` completes the `--name` custom properties declared anywhere in the workspace.
 - ✅ Reads declarations from any rule (`:root` included) and accepts a fallback, as in `var(--name, 0)`.
 
+### 🏷️ Class and attribute names in templates
+
+- ✅ Completes the names a workspace stylesheet defines inside the `class`, `id`, and other attributes of an HTML, Vue, Svelte, or Astro template.
+- ✅ Reads the names from the selectors themselves — `.name` for `class`, `#name` for `id`, and `[name]` / `[name=value]` for attributes — so BEM (`&__element`) and `#{$name}` interpolation over a literal list (`$name: a, b`, or the items of an `@each`) are covered.
+- ✅ Reads the selectors from `.scss`, `.sass`, and plain `.css` files alike, so a stylesheet written in CSS contributes to the templates it is grouped with.
+- ✅ Shows the `label` of the group a suggestion comes from next to it (or its source path when the group has no label), and the comment written above the selector in the documentation panel.
+- ✅ Restricts suggestions per template with the `groups` setting, which pairs stylesheet globs with the template globs they apply to.
+
+![Class and attribute name completion inside a template attribute](https://raw.githubusercontent.com/boomba286/sass-scss-completion/main/docs/example.png)
+
 ### 💬 Hover documentation
 
 - ✅ Hovering a built-in function or mixin shows its signature, per-parameter descriptions (required/optional/default), a usage example, and a link to the official documentation.
@@ -67,6 +79,39 @@
 - ✅ Underlines a CSS property value that the property does not accept, for example `text-transform: uppercases`, `display: flexx`, `color: notacolor`, or `text-transform: casinsss()`.
 - ✅ Warns about a `var(--name)` use whose `--name` nothing declares. The compiler accepts an unknown name, so this is a warning, not an error.
 
+## ⚙️ Configuration
+
+Both settings live in the `settings.json` of the workspace (or in your user settings).
+
+| Setting                        | Type       | Default | Description                                                                                                                                                                                                                                                       |
+| ------------------------------ | ---------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sass-scss-completion.exclude` | `string[]` | `[]`    | Additional glob patterns excluded from workspace indexing, on top of the built-in list (dependency, build output, and cache directories). Each entry must be a single pattern, for example `vendor-legacy` or `**/generated/**`.                                   |
+| `sass-scss-completion.groups`  | `object[]` | `[]`    | Pairs the stylesheet globs (`styles`) a template completion draws from with the template globs (`targets`) they apply to. An optional `label` is shown next to each suggestion. A `styles` glob matches SCSS, Sass, and CSS files. With no group, every stylesheet completes in every template the extension supports. |
+
+Example:
+
+```json
+{
+  "sass-scss-completion.exclude": ["vendor-legacy", "**/generated/**"],
+  "sass-scss-completion.groups": [
+    {
+      "styles": ["packages/theme/**/*.scss"],
+      "targets": ["apps/web/**/*.vue"],
+      "label": "web"
+    },
+    {
+      "styles": ["packages/ui/**/*.scss"],
+      "targets": ["apps/**/*.{vue,html}"],
+      "label": "ui"
+    }
+  ]
+}
+```
+
+A group applies a stylesheet to a template when the template path matches one of the group's `targets` globs, and a suggestion shows the `label` of the group its stylesheet belongs to — or its source path when that group has no label. An empty `targets` makes the group apply to every template. Once any group is set, a stylesheet that no group's `styles` names (or a template that no group's `targets` matches) receives no suggestions.
+
+The workspace index is rebuilt automatically when files change and whenever these settings change.
+
 ## 🌐 Supported Languages
 
 | Language      | Extensions | Completion | Hover | Diagnostics |
@@ -74,6 +119,11 @@
 | SCSS          | `.scss`    |     ✅     |  ✅   |     ✅      |
 | Indented Sass | `.sass`    |     ✅     |  ✅   |     ✅      |
 | Vue           | `.vue`     |     ✅     |  ✅   |     ➖      |
+| HTML          | `.html`    |     ✅     |  ➖   |     ➖      |
+| Svelte        | `.svelte`  |     ✅     |  ➖   |     ➖      |
+| Astro         | `.astro`   |     ✅     |  ➖   |     ➖      |
+
+In `SCSS`, `Indented Sass`, and `Vue` the completion covers the Sass members. In `HTML`, `Svelte`, and `Astro` it covers the class, id, and attribute names the workspace stylesheets define; in `Vue` it covers both. The stylesheets the template completion reads are `.scss`, `.sass`, and plain `.css` files; a `.css` file supplies its selectors and custom properties only, since it holds no Sass member or diagnostic to check.
 
 ## 🧩 Framework Support
 
@@ -90,22 +140,6 @@ The extension works on the `.scss` and `.sass` files in a project, independent o
 
 - CSS-in-JS template literals (for example `styled-components` or `emotion`).
 - Angular inline `styles: ['...']` string literals.
-
-## ⚙️ Configuration
-
-| Setting                      | Type       | Default | Description                                                                                                                                                                                          |
-| ---------------------------- | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sass-scss-completion.exclude` | `string[]` | `[]`    | Additional glob patterns excluded from workspace indexing, on top of the built-in list (dependency, build output, and cache directories). Each entry must be a single pattern, for example `vendor-legacy` or `**/generated/**`. |
-
-Example:
-
-```json
-{
-  "sass-scss-completion.exclude": ["vendor-legacy", "**/generated/**"]
-}
-```
-
-The workspace index is rebuilt automatically when files change and whenever this setting changes.
 
 ## 📖 Usage
 
@@ -404,40 +438,15 @@ A `$name: value` written inside a flow-control block (`@if`, `@else`, `@each`, `
 
 ## 📦 Installation
 
-**From the Marketplace:** search for **Sass/SCSS Parameter Completion** and install it.
-
-**From a VSIX package:** package the extension and install it through **Install from VSIX** in the Extensions view:
+Package the extension and install it through **Install from VSIX** in the Extensions view:
 
 ```sh
 npx @vscode/vsce package
 ```
 
-## 🛠️ Development
+## 🤝 Contributing
 
-Requirements: Node.js 20 or later and VS Code 1.75 or later (or a compatible editor such as Trae).
-
-```sh
-npm install
-npm run build
-```
-
-Press `F5` to launch the Extension Development Host, then open an SCSS or Sass file in that host and try a function or mixin call.
-
-### ✅ Tests
-
-Core logic (Vitest):
-
-```sh
-npm test
-```
-
-End-to-end against a real VS Code host:
-
-```sh
-npm run test:e2e
-```
-
-The E2E run uses a locally installed VS Code by default. Set `VSCODE_EXECUTABLE_PATH` to point at a different executable. On a headless machine, download a VS Code build by unsetting that variable, or run it under a virtual display such as `xvfb-run -a`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the test commands.
 
 ## ⚠️ Known Limitations
 

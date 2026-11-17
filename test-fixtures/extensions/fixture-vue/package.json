@@ -1,0 +1,22 @@
+{
+  "name": "fixture-vue",
+  "publisher": "sass-scss-completion",
+  "version": "1.0.0",
+  "description": "Registers the Vue language for the E2E suite, so the test host does not depend on a locally installed Vue extension.",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "vue",
+        "aliases": [
+          "Vue"
+        ],
+        "extensions": [
+          ".vue"
+        ]
+      }
+    ]
+  }
+}

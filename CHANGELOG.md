@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Added completion for the class names, ids, and attribute selectors a workspace stylesheet defines, inside the `class`, `id`, and other attributes of an HTML, Vue, Svelte, or Astro template.
+- The selectors are read from `.scss`, `.sass`, and plain `.css` files, so a stylesheet written in CSS contributes its class, id, and attribute names — and its `--custom` properties — to the templates it is grouped with. A `.css` file is not indexed for Sass signatures and takes no part in `@use` resolution, so it adds no diagnostics of its own.
+- The names are read from the selectors themselves, so BEM (`&__element`) and `#{$name}` interpolation over a literal list (`$name: a, b`, or the items of an `@each`) are covered.
+- Added the `sass-scss-completion.groups` setting, which pairs stylesheet globs with the template globs they apply to, so a stylesheet completes only in the templates its group targets.
+- A template suggestion shows the `label` of the group its stylesheet belongs to next to it — or its source path when the group has no label — and the comment written above the selector in the documentation panel.
+
 ## 0.2.1
 
 - Fixed `namespace.` completion to include the module's variables, so `namespace.` now lists variables together with the functions and mixins. Previously a variable was offered only after `namespace.$`.

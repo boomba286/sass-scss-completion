@@ -1,0 +1,37 @@
+// Selectors whose class, id, and attribute names a template completes. Kept apart from the other
+// fixtures so their diagnostics stay unaffected.
+
+.btn {
+  color: red;
+
+  &:hover {
+    color: blue;
+  }
+
+  &__label {
+    font-weight: bold;
+  }
+}
+
+// The primary call to action.
+.btn-primary {
+  color: green;
+}
+
+#app {
+  display: block;
+}
+
+[data-state="open"] {
+  opacity: 1;
+}
+
+[disabled] {
+  cursor: not-allowed;
+}
+
+$variant: primary;
+
+.badge-#{$variant} {
+  color: green;
+}

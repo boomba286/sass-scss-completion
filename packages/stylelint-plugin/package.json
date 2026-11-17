@@ -1,0 +1,50 @@
+{
+  "name": "@boomba286/stylelint-plugin-sass-scss",
+  "version": "0.3.0",
+  "description": "Stylelint rules that reuse the Sass/SCSS analysis engine behind the Sass/SCSS IntelliSense VS Code extension.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/boomba286/sass-scss-completion.git",
+    "directory": "packages/stylelint-plugin"
+  },
+  "keywords": [
+    "stylelint",
+    "stylelint-plugin",
+    "scss",
+    "sass",
+    "css",
+    "lint"
+  ],
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "stylelint": "^16.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.25.0",
+    "postcss-scss": "^4.0.9",
+    "stylelint": "^16.0.0",
+    "tinyglobby": "^0.2.17",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.12",
+    "vscode-css-languageservice": "^6.3.10"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "prepack": "npm run build",
+    "verify:example": "npm run build && stylelint \"example/**/*.scss\""
+  }
+}

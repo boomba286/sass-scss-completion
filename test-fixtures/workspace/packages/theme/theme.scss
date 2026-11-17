@@ -1,0 +1,10 @@
+// Selected by the `styles` glob of the `web` group in the E2E suite, which points at this directory.
+// `.card` is defined here and in `packages/ui`, so its suggestion merges both group labels.
+
+.theme-card {
+  color: red;
+}
+
+.card {
+  color: black;
+}

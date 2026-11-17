@@ -31,6 +31,12 @@ describe('extractCustomProperties', () => {
 
     expect(extractCustomProperties(text)).toEqual([]);
   });
+
+  it('keeps a `//` inside a value when the file is plain CSS', () => {
+    const text = '.icon { background: url(//cdn.example.com/icon.png); } :root { --gap: 4px; }';
+
+    expect(extractCustomProperties(text, 'css')).toEqual(['--gap']);
+  });
 });
 
 describe('findUndefinedCustomProperties', () => {

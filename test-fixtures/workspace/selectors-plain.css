@@ -1,0 +1,9 @@
+/* The plain CSS button. */
+.plain-btn {
+  background: url(//cdn.example.com/plain.png);
+  color: red;
+}
+
+.plain-card {
+  color: gray;
+}

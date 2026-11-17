@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { runTests } from '@vscode/test-electron';
 
@@ -16,6 +17,18 @@ function resolveExecutable(): string | undefined {
   return undefined;
 }
 
+/**
+ * Copies the fixture extensions into a temporary folder. The runner writes its own state into the
+ * extensions folder, so running from a copy keeps the fixture in the repository clean.
+ */
+function prepareExtensionsDir(source: string): string {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), 'sass-scss-completion-ext-'));
+
+  fs.cpSync(source, target, { recursive: true });
+
+  return target;
+}
+
 async function main(): Promise<void> {
   const extensionDevelopmentPath = path.resolve(__dirname, '..', '..');
   const extensionTestsPath = path.resolve(__dirname, 'suite', 'index');
@@ -24,13 +37,26 @@ async function main(): Promise<void> {
     'test-fixtures',
     'workspace',
   );
+  const extensionsDir = prepareExtensionsDir(
+    path.resolve(extensionDevelopmentPath, 'test-fixtures', 'extensions'),
+  );
 
-  await runTests({
-    vscodeExecutablePath: resolveExecutable(),
-    extensionDevelopmentPath,
-    extensionTestsPath,
-    launchArgs: [workspacePath, '--disable-gpu', '--skip-welcome', '--skip-release-notes'],
-  });
+  try {
+    await runTests({
+      vscodeExecutablePath: resolveExecutable(),
+      extensionDevelopmentPath,
+      extensionTestsPath,
+      launchArgs: [
+        workspacePath,
+        `--extensions-dir=${extensionsDir}`,
+        '--disable-gpu',
+        '--skip-welcome',
+        '--skip-release-notes',
+      ],
+    });
+  } finally {
+    fs.rmSync(extensionsDir, { recursive: true, force: true });
+  }
 }
 
 main().catch((error) => {

@@ -1,0 +1,44 @@
+{
+  "_definitions.scss": [],
+  "_forward.scss": [],
+  "_tokens.scss": [],
+  "_variables.scss": [],
+  "usage-builtin.scss": [
+    { "line": 4, "character": 22, "severity": "error", "message": "Used undefined variable $ss." }
+  ],
+  "usage-custom-properties.scss": [
+    { "line": 13, "character": 13, "severity": "warning", "message": "Unknown custom property --missing." }
+  ],
+  "usage-diagnostic.scss": [
+    { "line": 3, "character": 9, "severity": "error", "message": "Missing required argument(s) $number2 in the call to math.div." }
+  ],
+  "usage-dup.scss": [],
+  "usage-member.scss": [],
+  "usage-missing-arg.scss": [
+    { "line": 3, "character": 9, "severity": "error", "message": "Missing required argument(s) $value in the call to d.rem." },
+    { "line": 7, "character": 11, "severity": "error", "message": "Missing required argument(s) $width in the call to d.box." }
+  ],
+  "usage-missing-properties.scss": [
+    { "line": 4, "character": 18, "severity": "error", "message": "Unknown value 'uppercases' for property 'text-transform'." },
+    { "line": 5, "character": 11, "severity": "error", "message": "Unknown value 'flexx' for property 'display'." },
+    { "line": 6, "character": 9, "severity": "error", "message": "Unknown value 'notacolor' for property 'color'." },
+    { "line": 7, "character": 9, "severity": "error", "message": "Unknown value 'abc' for property 'width'." },
+    { "line": 8, "character": 18, "severity": "error", "message": "Unknown value 'casinsss()' for property 'text-transform'." },
+    { "line": 23, "character": 18, "severity": "error", "message": "Unknown value 'casins()' for property 'text-transform'." }
+  ],
+  "usage-mixin.scss": [],
+  "usage-namespace.scss": [
+    { "line": 4, "character": 9, "severity": "error", "message": "Unknown value 'co' for property 'width'." }
+  ],
+  "usage-unknown-member.scss": [
+    { "line": 3, "character": 9, "severity": "error", "message": "Undefined function d.rem2." },
+    { "line": 7, "character": 11, "severity": "error", "message": "Undefined mixin d.box2." },
+    { "line": 11, "character": 10, "severity": "error", "message": "Undefined variable d.$missing." }
+  ],
+  "usage-variable-scope.scss": [
+    { "line": 24, "character": 10, "severity": "error", "message": "Used undefined variable $item." },
+    { "line": 29, "character": 9, "severity": "error", "message": "Used undefined variable $later." }
+  ],
+  "usage.scss": [],
+  "users-missing-variables.scss": []
+}

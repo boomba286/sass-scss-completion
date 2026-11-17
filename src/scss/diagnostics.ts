@@ -35,12 +35,24 @@ export interface TextRange {
   end: number;
 }
 
+/** The stylesheet syntax a file is written in. Sass adds `//` line comments; plain CSS does not. */
+export type StylesheetSyntax = 'scss' | 'css';
+
+export interface MaskOptions {
+  /**
+   * Whether `//` opens a line comment. Sass has them and plain CSS does not, so reading a `.css`
+   * file with `false` keeps a value such as `url(//host/a.png)` intact. Defaults to `true`.
+   */
+  lineComments?: boolean;
+}
+
 /**
  * Creates a copy in which the insides of strings/comments are overwritten with spaces.
  * The length is preserved so offsets stay valid, and scanning this copy filters out
  * fake calls that appear inside strings or comments.
  */
-export function maskNonCode(text: string): string {
+export function maskNonCode(text: string, options: MaskOptions = {}): string {
+  const lineComments = options.lineComments ?? true;
   const chars = text.split('');
   const length = text.length;
   let i = 0;
@@ -49,7 +61,7 @@ export function maskNonCode(text: string): string {
     const ch = text[i];
     const next = text[i + 1];
 
-    if (ch === '/' && next === '/') {
+    if (lineComments && ch === '/' && next === '/') {
       while (i < length && text[i] !== '\n') {
         chars[i] = ' ';
         i += 1;

@@ -52,12 +52,24 @@ import {
   maskNonCode,
   type ModuleMember,
   type ModuleMembers,
+  type StylesheetSyntax,
 } from './scss/diagnostics';
 import { findUndefinedVariables, visibleVariablesAt } from './scss/scopes';
+import { extractAttributes, type AttributeCandidate } from './scss/selectors';
 
-const GLOB = '**/*.{scss,sass}';
+/** The stylesheets whose selectors and custom properties are indexed. Plain CSS is included here
+ * only: a `.css` file has no Sass signature to index and no `@use` module to resolve. */
+const STYLESHEET_GLOB = '**/*.{scss,sass,css}';
 const CONFIG_SECTION = 'sass-scss-completion';
 const LANGUAGES = [{ language: 'scss' }, { language: 'sass' }, { language: 'vue' }];
+
+/** Template languages whose attribute values and names the stylesheet selectors are completed into. */
+const TEMPLATE_LANGUAGES = [
+  { language: 'html' },
+  { language: 'vue' },
+  { language: 'svelte' },
+  { language: 'astro' },
+];
 
 /** Dependency/build-output/cache directories to exclude from indexing. */
 const EXCLUDED_DIRS = [
@@ -101,7 +113,11 @@ function excludeGlob(): string {
     .get<string[]>('exclude', [])
     .filter((pattern) => pattern.trim().length > 0);
 
-  return `**/{${[...EXCLUDED_DIRS, ...extra].join(',')}}/**`;
+  // Each entry is a full pattern: the built-in names become `**/<name>/**`, while a user entry is
+  // used as written, so both a bare directory name (`legacy`) and a glob (`**/generated/**`) apply.
+  const patterns = [...EXCLUDED_DIRS.map((dir) => `**/${dir}/**`), ...extra];
+
+  return `{${patterns.join(',')}}`;
 }
 
 /** Plain directory names from the user setting (glob patterns are ignored), used for watcher filtering. */
@@ -161,15 +177,17 @@ class SignatureIndex {
   private definitions = new Map<string, IndexedSignature>();
   private files = new Map<string, IndexedFile>();
   private customProperties = new Set<string>();
+  private selectors = new Map<string, AttributeCandidate[]>();
 
   async rebuild(): Promise<void> {
     const definitions = new Map<string, IndexedSignature>();
     const files = new Map<string, IndexedFile>();
     const customProperties = new Set<string>();
+    const selectors = new Map<string, AttributeCandidate[]>();
     let uris: vscode.Uri[] = [];
 
     try {
-      uris = await vscode.workspace.findFiles(GLOB, excludeGlob(), MAX_FILES);
+      uris = await vscode.workspace.findFiles(STYLESHEET_GLOB, excludeGlob(), MAX_FILES);
     } catch {
       uris = [];
     }
@@ -183,6 +201,17 @@ class SignatureIndex {
         continue;
       }
 
+      const syntax: StylesheetSyntax = uri.fsPath.toLowerCase().endsWith('.css') ? 'css' : 'scss';
+
+      selectors.set(uri.fsPath, extractAttributes(text, syntax));
+
+      for (const name of extractCustomProperties(text, syntax)) customProperties.add(name);
+
+      // A `.css` file takes part in the selector and custom-property indexes only. `@use` never
+      // loads a plain `.css` file, so a `.css` path in the module index would make a `@use 'foo'`
+      // that has no Sass target resolve to `foo.css` and report its (empty) members as unknown.
+      if (syntax === 'css') continue;
+
       const signatures = extractSignatures(text);
 
       files.set(uri.fsPath, {
@@ -190,8 +219,6 @@ class SignatureIndex {
         variables: extractVariables(text),
         forwards: parseForwardUrls(text),
       });
-
-      for (const name of extractCustomProperties(text)) customProperties.add(name);
 
       for (const signature of signatures) {
         if (!definitions.has(signature.name)) {
@@ -203,6 +230,7 @@ class SignatureIndex {
     this.definitions = definitions;
     this.files = files;
     this.customProperties = customProperties;
+    this.selectors = selectors;
   }
 
   get(name: string): IndexedSignature | null {
@@ -212,6 +240,16 @@ class SignatureIndex {
   /** The custom property names declared anywhere in the workspace. */
   customPropertyNames(): ReadonlySet<string> {
     return this.customProperties;
+  }
+
+  /** The attributes one stylesheet's selectors name. */
+  selectorsOf(filePath: string): AttributeCandidate[] {
+    return this.selectors.get(filePath) ?? [];
+  }
+
+  /** The stylesheets whose selectors were indexed. */
+  selectorFiles(): string[] {
+    return [...this.selectors.keys()];
   }
 
   /** Resolves a `@use`/`@forward` URL to the actual module file relative to `fromFile`. */
@@ -235,6 +273,341 @@ class SignatureIndex {
       this.resolveModulePath(url, fromFile),
     );
   }
+}
+
+/** One entry of the `groups` setting: the stylesheets and the templates they apply to. */
+interface GroupSetting {
+  styles?: string[];
+  targets?: string[];
+  label?: string;
+}
+
+/** One stylesheet that defines a suggestion, with the text shown beside the suggestion. */
+interface Origin {
+  /** The folder and file name of the stylesheet, shown at the top of the documentation panel. */
+  path: string;
+  /** The group label, or an empty string when the group names no label. */
+  label: string;
+  /** The comment written above the selector, or null when it has none. */
+  comment: string | null;
+}
+
+/** The completion data one group contributes: the values and names, each with its origins. */
+interface CompletionGroup {
+  /** Glob patterns for the templates the group applies to; an empty list applies it to every template. */
+  targets: string[];
+  /** Attribute name → value → the stylesheets that define it. */
+  values: Map<string, Map<string, Origin[]>>;
+  /** Attribute name → the stylesheets that define it. */
+  names: Map<string, Origin[]>;
+}
+
+/**
+ * The folder and file name of a stylesheet, with forward slashes, shown beside a suggestion in place
+ * of a group label. Only the last directory is kept, so a deep path does not crowd the row, and a
+ * file at the workspace root shows its name alone.
+ */
+function shortPath(fsPath: string): string {
+  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(fsPath));
+  const segments = folder
+    ? path.relative(folder.uri.fsPath, fsPath).split(path.sep)
+    : [path.basename(fsPath)];
+
+  return segments.filter((segment) => segment !== '').slice(-2).join('/');
+}
+
+/** The indexed stylesheets the glob patterns match; an empty pattern list selects every indexed file. */
+async function selectFiles(
+  patterns: string[],
+  indexed: ReadonlySet<string>,
+): Promise<Set<string>> {
+  if (patterns.length === 0) return new Set(indexed);
+
+  const found = new Set<string>();
+
+  for (const pattern of patterns) {
+    let uris: vscode.Uri[] = [];
+
+    try {
+      uris = await vscode.workspace.findFiles(pattern, excludeGlob(), MAX_FILES);
+    } catch {
+      uris = [];
+    }
+
+    for (const uri of uris) if (indexed.has(uri.fsPath)) found.add(uri.fsPath);
+  }
+
+  return found;
+}
+
+/** Adds `origin` to the list stored under `key`, ignoring one already recorded. */
+function addOrigin(map: Map<string, Origin[]>, key: string, origin: Origin): void {
+  const list = map.get(key) ?? [];
+
+  const known = list.some(
+    (other) => other.path === origin.path && other.label === origin.label && other.comment === origin.comment,
+  );
+
+  if (!known) list.push(origin);
+
+  map.set(key, list);
+}
+
+/** The value and name maps a set of stylesheets contributes, each entry keeping its origins. */
+function aggregate(
+  index: SignatureIndex,
+  files: Map<string, string>,
+): Pick<CompletionGroup, 'values' | 'names'> {
+  const values = new Map<string, Map<string, Origin[]>>();
+  const names = new Map<string, Origin[]>();
+
+  for (const [file, label] of files) {
+    const originPath = shortPath(file);
+
+    for (const candidate of index.selectorsOf(file)) {
+      // Attribute names are matched without case, the way HTML matches them.
+      const attribute = candidate.name.toLowerCase();
+      const origin: Origin = { path: originPath, label, comment: candidate.comment };
+
+      addOrigin(names, attribute, origin);
+
+      if (candidate.value === null) continue;
+
+      const byValue = values.get(attribute) ?? new Map<string, Origin[]>();
+
+      addOrigin(byValue, candidate.value, origin);
+      values.set(attribute, byValue);
+    }
+  }
+
+  return { values, names };
+}
+
+/**
+ * Builds the completion groups. With no `groups` setting, one group covers the whole workspace and
+ * its suggestions carry no label, so the path of the stylesheet fills the row in its place.
+ */
+async function buildGroups(index: SignatureIndex): Promise<CompletionGroup[]> {
+  const configured = vscode.workspace
+    .getConfiguration(CONFIG_SECTION)
+    .get<GroupSetting[]>('groups', []);
+
+  if (configured.length === 0) {
+    const files = new Map<string, string>();
+
+    for (const file of index.selectorFiles()) files.set(file, '');
+
+    return [{ targets: [], ...aggregate(index, files) }];
+  }
+
+  const indexed = new Set(index.selectorFiles());
+  const groups: CompletionGroup[] = [];
+
+  for (const entry of configured) {
+    const label = entry.label?.trim() ?? '';
+    const files = new Map<string, string>();
+
+    for (const file of await selectFiles(entry.styles ?? [], indexed)) files.set(file, label);
+
+    groups.push({ targets: entry.targets ?? [], ...aggregate(index, files) });
+  }
+
+  return groups;
+}
+
+/** The attribute name and value being typed at an offset in a template. */
+interface AttributeContext {
+  /** The attribute whose value is being typed, or null at an attribute-name position. */
+  attribute: string | null;
+  /** The text already typed for the current token. */
+  prefix: string;
+  /** Offset where the current token starts. */
+  start: number;
+}
+
+/** `<div class="btn` — an attribute assignment whose value is still open. */
+const ATTR_VALUE_RE = /([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(["'])([^"']*)$/;
+
+/** `<div cl` — a partial attribute name, after the tag name. */
+const ATTR_NAME_RE = /\s([-A-Za-z0-9_:.]*)$/;
+
+/** The attribute name and value context at `offset`, or null when the cursor is not inside a tag. */
+function attributeContext(text: string, offset: number): AttributeContext | null {
+  const before = text.slice(0, offset);
+  const open = before.lastIndexOf('<');
+
+  if (open === -1) return null;
+  if (before.lastIndexOf('>') > open) return null;
+
+  const tag = before.slice(open);
+
+  if (tag.startsWith('<!')) return null;
+
+  const value = tag.match(ATTR_VALUE_RE);
+
+  if (value) {
+    const typed = value[3];
+    const space = typed.search(/\s[^\s]*$/);
+    const prefix = space === -1 ? typed : typed.slice(space + 1);
+
+    return { attribute: value[1].toLowerCase(), prefix, start: offset - prefix.length };
+  }
+
+  const name = tag.match(ATTR_NAME_RE);
+
+  if (!name) return null;
+
+  return { attribute: null, prefix: name[1], start: offset - name[1].length };
+}
+
+/**
+ * True when a target pattern covers the document. A document filter matches the pattern against the
+ * full path, so a workspace-relative pattern such as `src/` + `**` + `/*.vue` also needs the leading
+ * `**` + `/` that a `findFiles` glob gets for free. Both forms are tried, so a target works as
+ * written, just like a `styles` glob.
+ */
+function matchesTarget(pattern: string, document: vscode.TextDocument): boolean {
+  const candidates = /^(\*\*\/|\/)/.test(pattern) ? [pattern] : [`**/${pattern}`, pattern];
+
+  return candidates.some((candidate) => {
+    try {
+      return vscode.languages.match({ pattern: candidate }, document) > 0;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** True when a group's targets cover the document. */
+function appliesTo(group: CompletionGroup, document: vscode.TextDocument): boolean {
+  if (group.targets.length === 0) return true;
+
+  return group.targets.some((pattern) => matchesTarget(pattern, document));
+}
+
+/** True when a comment is worth showing. */
+function hasComment(comment: string | null): comment is string {
+  return comment !== null && comment !== '';
+}
+
+/** The source paths a suggestion came from, sorted. */
+function sourcePaths(origins: readonly Origin[]): string {
+  return [...new Set(origins.map((origin) => origin.path))].sort().join(', ');
+}
+
+/** The group labels a suggestion came from, sorted; empty when no group names one. */
+function groupLabels(origins: readonly Origin[]): string {
+  return [...new Set(origins.map((origin) => origin.label))]
+    .filter((label) => label !== '')
+    .sort()
+    .join(', ');
+}
+
+/** The comments written above the selectors a suggestion came from, in source order. */
+function originComments(origins: readonly Origin[]): string[] {
+  return [...new Set(origins.map((origin) => origin.comment).filter(hasComment))];
+}
+
+/** The text shown to the right of the name: the group label, or the source path when it has none. */
+function rowDescription(origins: readonly Origin[]): string {
+  const labels = groupLabels(origins);
+
+  return labels !== '' ? labels : sourcePaths(origins);
+}
+
+/**
+ * The documentation panel: the source path on top of the comments written above the selectors. The
+ * path is left out when the row already shows it in place of a label, so it only appears once.
+ */
+function originDocumentation(origins: readonly Origin[]): vscode.MarkdownString | null {
+  const parts = groupLabels(origins) !== '' ? [sourcePaths(origins)] : [];
+
+  parts.push(...originComments(origins));
+
+  return parts.length > 0 ? new vscode.MarkdownString(parts.join('\n\n')) : null;
+}
+
+/** The value suggestions for the attribute being typed, with the label, path, and comment of each. */
+function attributeValueItems(
+  attribute: string,
+  context: AttributeContext,
+  document: vscode.TextDocument,
+  groups: readonly CompletionGroup[],
+): vscode.CompletionItem[] {
+  const merged = new Map<string, Origin[]>();
+
+  for (const group of groups) {
+    if (!appliesTo(group, document)) continue;
+
+    for (const [value, origins] of group.values.get(attribute) ?? []) {
+      for (const origin of origins) addOrigin(merged, value, origin);
+    }
+  }
+
+  const range = new vscode.Range(
+    document.positionAt(context.start),
+    document.positionAt(context.start + context.prefix.length),
+  );
+
+  return [...merged.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([value, origins]) => {
+      const item = new vscode.CompletionItem(
+        { label: value, description: rowDescription(origins) },
+        vscode.CompletionItemKind.Value,
+      );
+
+      const documentation = originDocumentation(origins);
+
+      if (documentation) item.documentation = documentation;
+      item.insertText = value;
+      item.range = range;
+      item.filterText = value;
+      item.sortText = value;
+
+      return item;
+    });
+}
+
+/** The attribute-name suggestions, with the label, path, and comment of each. */
+function attributeNameItems(
+  context: AttributeContext,
+  document: vscode.TextDocument,
+  groups: readonly CompletionGroup[],
+): vscode.CompletionItem[] {
+  const merged = new Map<string, Origin[]>();
+
+  for (const group of groups) {
+    if (!appliesTo(group, document)) continue;
+
+    for (const [name, origins] of group.names) {
+      for (const origin of origins) addOrigin(merged, name, origin);
+    }
+  }
+
+  const range = new vscode.Range(
+    document.positionAt(context.start),
+    document.positionAt(context.start + context.prefix.length),
+  );
+
+  return [...merged.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, origins]) => {
+      const item = new vscode.CompletionItem(
+        { label: name, description: rowDescription(origins) },
+        vscode.CompletionItemKind.Property,
+      );
+
+      const documentation = originDocumentation(origins);
+
+      if (documentation) item.documentation = documentation;
+      item.insertText = name;
+      item.range = range;
+      item.filterText = name;
+      item.sortText = name;
+
+      return item;
+    });
 }
 
 /** The `$variable` or name token directly before the cursor, with the offset it starts at. */
@@ -947,6 +1320,43 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   };
 
+  /** The completion groups, derived from the `groups` setting and the current index. */
+  let groups: CompletionGroup[] = [];
+
+  /** Recomputes the completion groups from the setting and the freshly built index. */
+  const refreshGroups = async (): Promise<void> => {
+    groups = await buildGroups(index);
+  };
+
+  /** Rebuilds the index, then the groups that are derived from it. */
+  const rebuildAll = async (): Promise<void> => {
+    await index.rebuild();
+    await refreshGroups();
+  };
+
+  /**
+   * The class/id/attribute selectors a stylesheet defines, offered inside the matching attribute of
+   * a template. Which stylesheets apply to which templates is resolved by the `groups` setting.
+   */
+  const templateProvider: vscode.CompletionItemProvider = {
+    provideCompletionItems(document, position) {
+      if (document.uri.scheme !== 'file') return undefined;
+
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+      const context = attributeContext(text, offset);
+
+      if (!context) return undefined;
+
+      const items =
+        context.attribute === null
+          ? attributeNameItems(context, document, groups)
+          : attributeValueItems(context.attribute, context, document, groups);
+
+      return items.length > 0 ? new vscode.CompletionList(items, false) : undefined;
+    },
+  };
+
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(LANGUAGES, paramProvider, '$', ',', '('),
     vscode.languages.registerCompletionItemProvider(LANGUAGES, memberProvider, '.', '$'),
@@ -955,16 +1365,23 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerCompletionItemProvider(LANGUAGES, usePathProvider, "'", '"', ':'),
     vscode.languages.registerCompletionItemProvider(LANGUAGES, namespaceProvider),
     vscode.languages.registerHoverProvider(LANGUAGES, hoverProvider),
+    vscode.languages.registerCompletionItemProvider(
+      TEMPLATE_LANGUAGES,
+      templateProvider,
+      '"',
+      "'",
+      '=',
+    ),
   );
 
-  index.rebuild();
+  rebuildAll();
 
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const scheduleRebuild = (): void => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      index.rebuild();
+      rebuildAll();
     }, 300);
   };
 
@@ -974,7 +1391,7 @@ export function activate(context: vscode.ExtensionContext): void {
     scheduleRebuild();
   };
 
-  const watcher = vscode.workspace.createFileSystemWatcher(GLOB);
+  const watcher = vscode.workspace.createFileSystemWatcher(STYLESHEET_GLOB);
 
   context.subscriptions.push(
     watcher,
@@ -983,10 +1400,15 @@ export function activate(context: vscode.ExtensionContext): void {
     watcher.onDidDelete(onWatchedFile),
     vscode.workspace.onDidSaveTextDocument((document) => {
       updateDiagnostics(document);
-      if (/\.(scss|sass)$/i.test(document.uri.fsPath)) scheduleRebuild();
+      if (/\.(scss|sass|css)$/i.test(document.uri.fsPath)) scheduleRebuild();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration(`${CONFIG_SECTION}.exclude`)) scheduleRebuild();
+      if (
+        event.affectsConfiguration(`${CONFIG_SECTION}.exclude`) ||
+        event.affectsConfiguration(`${CONFIG_SECTION}.groups`)
+      ) {
+        scheduleRebuild();
+      }
     }),
     diagnosticCollection,
     vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
