@@ -1,8 +1,8 @@
 {
   "name": "sass-scss-completion",
   "displayName": "Sass/SCSS IntelliSense & HTML Class Names",
-  "description": "Completes Sass function and mixin parameters in SCSS, Sass, and Vue files, and the selectors a stylesheet defines in HTML, Vue, Svelte, and Astro templates.",
-  "version": "0.3.1",
+  "description": "Completes Sass function and mixin parameters in SCSS, Sass, and Vue files, and the selectors a stylesheet defines in HTML and Vue templates.",
+  "version": "0.4.0",
   "publisher": "boomba286",
   "license": "MIT",
   "repository": {
@@ -36,9 +36,7 @@
     "onLanguage:scss",
     "onLanguage:sass",
     "onLanguage:vue",
-    "onLanguage:html",
-    "onLanguage:svelte",
-    "onLanguage:astro"
+    "onLanguage:html"
   ],
   "contributes": {
     "languages": [

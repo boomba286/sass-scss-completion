@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+- Narrowed template completion to **HTML** and **Vue**. `Svelte` and `Astro` are dropped: the extension no longer registers its completion provider for `.svelte` and `.astro` files, and no longer lists them among the supported languages. The Sass and SCSS features are unaffected.
+
 ## 0.3.1
 
 - Added the `sass-scss-completion.rules` setting, which sets the severity of each diagnostic. Set a rule to `off` to silence it, to `warn` to report it as a warning, or to `error` to report it as an error. A rule left out keeps its default, so an existing project sees no change: `error` for every check except `no-undefined-custom-property`, which stays `warn`.

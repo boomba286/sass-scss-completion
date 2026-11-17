@@ -65,12 +65,7 @@ const CONFIG_SECTION = 'sass-scss-completion';
 const LANGUAGES = [{ language: 'scss' }, { language: 'sass' }, { language: 'vue' }];
 
 /** Template languages whose attribute values and names the stylesheet selectors are completed into. */
-const TEMPLATE_LANGUAGES = [
-  { language: 'html' },
-  { language: 'vue' },
-  { language: 'svelte' },
-  { language: 'astro' },
-];
+const TEMPLATE_LANGUAGES = [{ language: 'html' }, { language: 'vue' }];
 
 /** Dependency/build-output/cache directories to exclude from indexing. */
 const EXCLUDED_DIRS = [

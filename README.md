@@ -8,7 +8,7 @@
 
 🚀 Autocomplete and diagnostics for the Sass a project defines: parameter names for functions and mixins, the members of the modules you `@use`, and the CSS custom properties of the workspace.
 
-🏷️ The class, id, and attribute names your stylesheets define are suggested inside the `class`, `id`, and other attributes of an HTML, Vue, Svelte, or Astro template.
+🏷️ The class, id, and attribute names your stylesheets define are suggested inside the `class`, `id`, and other attributes of an HTML or Vue template.
 
 ✨ Parameters you have already passed by name are never suggested twice, and preceding positional arguments are taken into account. Built-in Sass modules (`sass:math`, `sass:color`, …) are supported out of the box, and so are the functions, mixins, and variables you `@use` from your own files.
 
@@ -57,7 +57,7 @@
 
 ### 🏷️ Class and attribute names in templates
 
-- ✅ Completes the names a workspace stylesheet defines inside the `class`, `id`, and other attributes of an HTML, Vue, Svelte, or Astro template.
+- ✅ Completes the names a workspace stylesheet defines inside the `class`, `id`, and other attributes of an HTML or Vue template.
 - ✅ Reads the names from the selectors themselves — `.name` for `class`, `#name` for `id`, and `[name]` / `[name=value]` for attributes — so BEM (`&__element`) and `#{$name}` interpolation over a literal list (`$name: a, b`, or the items of an `@each`) are covered.
 - ✅ Reads the selectors from `.scss`, `.sass`, and plain `.css` files alike, so a stylesheet written in CSS contributes to the templates it is grouped with.
 - ✅ Shows the `label` of the group a suggestion comes from next to it (or its source path when the group has no label), and the comment written above the selector in the documentation panel.
@@ -137,10 +137,8 @@ The workspace index is rebuilt automatically when files change and whenever thes
 | Indented Sass | `.sass`    |     ✅     |  ✅   |     ✅      |
 | Vue           | `.vue`     |     ✅     |  ✅   |     ➖      |
 | HTML          | `.html`    |     ✅     |  ➖   |     ➖      |
-| Svelte        | `.svelte`  |     ✅     |  ➖   |     ➖      |
-| Astro         | `.astro`   |     ✅     |  ➖   |     ➖      |
 
-In `SCSS`, `Indented Sass`, and `Vue` the completion covers the Sass members. In `HTML`, `Svelte`, and `Astro` it covers the class, id, and attribute names the workspace stylesheets define; in `Vue` it covers both. The stylesheets the template completion reads are `.scss`, `.sass`, and plain `.css` files; a `.css` file supplies its selectors and custom properties only, since it holds no Sass member or diagnostic to check.
+In `SCSS`, `Indented Sass`, and `Vue` the completion covers the Sass members. In `HTML` it covers the class, id, and attribute names the workspace stylesheets define; in `Vue` it covers both. The stylesheets the template completion reads are `.scss`, `.sass`, and plain `.css` files; a `.css` file supplies its selectors and custom properties only, since it holds no Sass member or diagnostic to check.
 
 ## 🧩 Framework Support
 
