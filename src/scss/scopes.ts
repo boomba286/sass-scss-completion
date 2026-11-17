@@ -385,7 +385,12 @@ export function findUndefinedVariables(
     if (extraDefined.has(name)) continue;
     if (isVisible(model, name, start)) continue;
 
-    issues.push({ start, end, message: `Used undefined variable $${name}.` });
+    issues.push({
+      start,
+      end,
+      message: `Used undefined variable $${name}.`,
+      rule: 'no-undefined-variable',
+    });
   }
 
   return issues;

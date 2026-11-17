@@ -1,7 +1,7 @@
 {
   "name": "@boomba286/stylelint-plugin-sass-scss",
-  "version": "0.3.0",
-  "description": "Stylelint rules that reuse the Sass/SCSS analysis engine behind the Sass/SCSS IntelliSense VS Code extension.",
+  "version": "0.3.1",
+  "description": "Stylelint rules that reuse the Sass/SCSS analysis engine behind the Sass/SCSS IntelliSense & HTML Class Names VS Code extension.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "postcss-scss": "^4.0.9",
     "stylelint": "^16.0.0",
     "tinyglobby": "^0.2.17",

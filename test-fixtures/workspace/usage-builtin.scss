@@ -2,6 +2,6 @@
 @use 'sass:color';
 
 .builtin {
-  width: math.div(12, $ss);
+  width: math.div(12, $ss); // no-undefined-variable
   background-color: blue;
 }

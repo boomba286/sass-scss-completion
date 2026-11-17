@@ -1,6 +1,6 @@
-// stylelint plugin entry point. The rules reuse the analysis engine behind the Sass/SCSS IntelliSense
-// VS Code extension, so an agent or a CI job can surface the same problems the editor
-// reports for a stylesheet that is not open in an editor.
+// stylelint plugin entry point. The rules reuse the analysis engine behind the
+// Sass/SCSS IntelliSense & HTML Class Names VS Code extension, so an agent or a CI job can surface
+// the same problems the editor reports for a stylesheet that is not open in an editor.
 
 import stylelint from 'stylelint';
 import missingRequiredArguments from './rules/missing-required-arguments';

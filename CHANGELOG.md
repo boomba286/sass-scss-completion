@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Added the `sass-scss-completion.rules` setting, which sets the severity of each diagnostic. Set a rule to `off` to silence it, to `warn` to report it as a warning, or to `error` to report it as an error. A rule left out keeps its default, so an existing project sees no change: `error` for every check except `no-undefined-custom-property`, which stays `warn`.
+- A rule name matches the rules of the `@boomba286/stylelint-plugin-sass-scss` package, and a name no rule has or a value outside the three is ignored, so a typo in `settings.json` leaves the rule at its default rather than silencing it.
+- Renamed the extension to **Sass/SCSS IntelliSense & HTML Class Names**, so the name states the whole range it covers: Sass and SCSS signatures, and the class, id, and attribute names it completes in a template.
+
 ## 0.3.0
 
 - Added completion for the class names, ids, and attribute selectors a workspace stylesheet defines, inside the `class`, `id`, and other attributes of an HTML, Vue, Svelte, or Astro template.

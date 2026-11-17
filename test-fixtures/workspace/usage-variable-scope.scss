@@ -22,11 +22,11 @@ $base: 8px;
 
 /* Error: the loop variable is not in scope outside the loop. */
 .outside {
-  margin: $item;
+  margin: $item; // no-undefined-variable
 }
 
 /* Error: a declaration that appears after its use. */
 .after {
-  width: $later;
+  width: $later; // no-undefined-variable
 }
 $later: 1px;

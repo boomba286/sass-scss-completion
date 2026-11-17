@@ -1,11 +1,11 @@
 @use 'definitions' as d;
 
 .missing-function-arg {
-  width: d.rem();
+  width: d.rem(); // missing-required-arguments
 }
 
 .missing-mixin-arg {
-  @include d.box();
+  @include d.box(); // missing-required-arguments
 }
 
 .supplied {

@@ -1,8 +1,8 @@
 {
   "name": "sass-scss-completion",
-  "displayName": "Sass/SCSS IntelliSense",
+  "displayName": "Sass/SCSS IntelliSense & HTML Class Names",
   "description": "Completes Sass function and mixin parameters in SCSS, Sass, and Vue files, and the selectors a stylesheet defines in HTML, Vue, Svelte, and Astro templates.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "boomba286",
   "license": "MIT",
   "repository": {
@@ -54,7 +54,7 @@
       }
     ],
     "configuration": {
-      "title": "Sass/SCSS IntelliSense",
+      "title": "Sass/SCSS IntelliSense & HTML Class Names",
       "properties": {
         "sass-scss-completion.exclude": {
           "type": "array",
@@ -122,6 +122,65 @@
                 "label": "admin"
               }
             ]
+          ]
+        },
+        "sass-scss-completion.rules": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": false,
+          "markdownDescription": "Sets the severity of each diagnostic. A rule left out keeps its default: `error` for every check, and `warn` for `no-undefined-custom-property`, since the compiler accepts a custom property name nothing declares. Set a rule to `off` to silence it, to `warn` to report it as a warning, or to `error` to report it as an error. The names match the rules of the `@boomba286/stylelint-plugin-sass-scss` package.",
+          "properties": {
+            "missing-required-arguments": {
+              "type": "string",
+              "enum": [
+                "off",
+                "warn",
+                "error"
+              ],
+              "markdownDescription": "A call that omits a required argument of a built-in or `@use`d module."
+            },
+            "no-undefined-function": {
+              "type": "string",
+              "enum": [
+                "off",
+                "warn",
+                "error"
+              ],
+              "markdownDescription": "A call to a function or a mixin that nothing defines, including a member a `@use`d module does not export."
+            },
+            "no-undefined-variable": {
+              "type": "string",
+              "enum": [
+                "off",
+                "warn",
+                "error"
+              ],
+              "markdownDescription": "A `$name` use that nothing declares, including a member variable a `@use`d module does not export."
+            },
+            "no-undefined-custom-property": {
+              "type": "string",
+              "enum": [
+                "off",
+                "warn",
+                "error"
+              ],
+              "markdownDescription": "A `var(--name)` use whose name nothing declares in the workspace. Defaults to `warn`."
+            },
+            "property-value-no-unknown": {
+              "type": "string",
+              "enum": [
+                "off",
+                "warn",
+                "error"
+              ],
+              "markdownDescription": "A declaration whose value the property does not accept, for example `display: flexx`."
+            }
+          },
+          "examples": [
+            {
+              "no-undefined-variable": "warn",
+              "property-value-no-unknown": "off"
+            }
           ]
         }
       }

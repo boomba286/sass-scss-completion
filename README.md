@@ -1,4 +1,4 @@
-# Sass/SCSS IntelliSense
+# Sass/SCSS IntelliSense & HTML Class Names
 
 [![CI](https://img.shields.io/github/actions/workflow/status/boomba286/sass-scss-completion/ci.yml?label=CI)](https://github.com/boomba286/sass-scss-completion/actions/workflows/ci.yml)
 [![Visual Studio Code](https://img.shields.io/badge/VS%20Code-%5E1.75.0-007ACC)](https://code.visualstudio.com/)
@@ -22,6 +22,8 @@
   width: rem(12, $);
 }
 ```
+
+![Class and attribute name completion inside a template attribute](https://raw.githubusercontent.com/boomba286/sass-scss-completion/main/docs/example.png)
 
 ## ✨ Features
 
@@ -61,8 +63,6 @@
 - ✅ Shows the `label` of the group a suggestion comes from next to it (or its source path when the group has no label), and the comment written above the selector in the documentation panel.
 - ✅ Restricts suggestions per template with the `groups` setting, which pairs stylesheet globs with the template globs they apply to.
 
-![Class and attribute name completion inside a template attribute](https://raw.githubusercontent.com/boomba286/sass-scss-completion/main/docs/example.png)
-
 ### 💬 Hover documentation
 
 - ✅ Hovering a built-in function or mixin shows its signature, per-parameter descriptions (required/optional/default), a usage example, and a link to the official documentation.
@@ -81,12 +81,13 @@
 
 ## ⚙️ Configuration
 
-Both settings live in the `settings.json` of the workspace (or in your user settings).
+The settings live in the `settings.json` of the workspace (or in your user settings).
 
 | Setting                        | Type       | Default | Description                                                                                                                                                                                                                                                       |
 | ------------------------------ | ---------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sass-scss-completion.exclude` | `string[]` | `[]`    | Additional glob patterns excluded from workspace indexing, on top of the built-in list (dependency, build output, and cache directories). Each entry must be a single pattern, for example `vendor-legacy` or `**/generated/**`.                                   |
 | `sass-scss-completion.groups`  | `object[]` | `[]`    | Pairs the stylesheet globs (`styles`) a template completion draws from with the template globs (`targets`) they apply to. An optional `label` is shown next to each suggestion. A `styles` glob matches SCSS, Sass, and CSS files. With no group, every stylesheet completes in every template the extension supports. |
+| `sass-scss-completion.rules`   | `object`   | `{}`    | Sets the severity of each diagnostic. A key is a rule name and a value is `off`, `warn`, or `error`. A rule left out keeps its default.                                                                                                                            |
 
 Example:
 
@@ -104,11 +105,27 @@ Example:
       "targets": ["apps/**/*.{vue,html}"],
       "label": "ui"
     }
-  ]
+  ],
+  "sass-scss-completion.rules": {
+    "no-undefined-variable": "warn",
+    "property-value-no-unknown": "off"
+  }
 }
 ```
 
 A group applies a stylesheet to a template when the template path matches one of the group's `targets` globs, and a suggestion shows the `label` of the group its stylesheet belongs to — or its source path when that group has no label. An empty `targets` makes the group apply to every template. Once any group is set, a stylesheet that no group's `styles` names (or a template that no group's `targets` matches) receives no suggestions.
+
+`rules` sets the severity of each diagnostic. The names match the rules of the `@boomba286/stylelint-plugin-sass-scss` package, so the editor and the command line share one vocabulary:
+
+| Rule                           | Default | Reports                                                                |
+| ------------------------------ | ------- | ---------------------------------------------------------------------- |
+| `missing-required-arguments`   | `error` | A call that omits a required argument of a built-in or `@use`d module. |
+| `no-undefined-function`        | `error` | A call to a function or mixin that nothing defines.                    |
+| `no-undefined-variable`        | `error` | A `$name` use that nothing declares.                                   |
+| `no-undefined-custom-property` | `warn`  | A `var(--name)` use whose name nothing declares.                       |
+| `property-value-no-unknown`    | `error` | A declaration whose value the property does not accept.                |
+
+A rule set to `off` is silenced, `warn` reports it as a warning, and `error` reports it as an error. A rule the setting leaves out keeps its default, so the diagnostics above are what a project gets without a `rules` entry.
 
 The workspace index is rebuilt automatically when files change and whenever these settings change.
 
