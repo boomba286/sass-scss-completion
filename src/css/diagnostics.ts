@@ -175,6 +175,7 @@ export function findUnknownPropertyValues(
       start: measured.start,
       end: measured.start + measured.text.length,
       message: `Unknown value '${measured.text}' for property '${propertyName}'.`,
+      rule: 'property-value-no-unknown',
     });
   });
 

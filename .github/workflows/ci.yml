@@ -27,3 +27,17 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Install the plugin dependencies
+        working-directory: packages/stylelint-plugin
+        run: npm ci
+
+      # `verify:example` lints a deliberately broken file, so it always ends on stylelint's exit
+      # code 2 (errors found) and cannot be a CI step as it stands. The count is asserted instead,
+      # which fails if the plugin stops loading or a rule stops reporting.
+      - name: Check the plugin example reports every rule
+        working-directory: packages/stylelint-plugin
+        run: |
+          npm run build
+          npx stylelint "example/**/*.scss" --formatter json --output-file "$RUNNER_TEMP/example.json" || true
+          node -e "const [report] = require(process.env.RUNNER_TEMP + '/example.json'); const count = report.warnings.length; if (count !== 5) { console.error('The example must report 5 problems, got ' + count); process.exit(1); }"

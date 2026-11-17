@@ -1,13 +1,13 @@
 @use 'definitions' as d;
 
 .unknown-function {
-  width: d.rem2(12);
+  width: d.rem2(12); // no-undefined-function
 }
 
 .unknown-mixin {
-  @include d.box2(1);
+  @include d.box2(1); // no-undefined-function
 }
 
 .unknown-variable {
-  height: d.$missing;
+  height: d.$missing; // no-undefined-variable
 }

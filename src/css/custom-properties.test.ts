@@ -44,7 +44,13 @@ describe('findUndefinedCustomProperties', () => {
     const issues = findUndefinedCustomProperties('.a {\n  color: var(--missing);\n}', new Set());
 
     expect(issues).toEqual([
-      { start: 18, end: 27, message: 'Unknown custom property --missing.', severity: 'warning' },
+      {
+        start: 18,
+        end: 27,
+        message: 'Unknown custom property --missing.',
+        rule: 'no-undefined-custom-property',
+        severity: 'warning',
+      },
     ]);
   });
 

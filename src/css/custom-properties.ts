@@ -61,6 +61,7 @@ export function findUndefinedCustomProperties(
       start,
       end: start + name.length,
       message: `Unknown custom property ${name}.`,
+      rule: 'no-undefined-custom-property',
       severity: 'warning',
     });
   }

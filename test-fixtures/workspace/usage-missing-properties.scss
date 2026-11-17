@@ -2,11 +2,11 @@
 
 /* Error: the property does not accept the value. */
 .wrong-name {
-  text-transform: uppercases;
-  display: flexx;
-  color: notacolor;
-  width: abc;
-  text-transform: casinsss();
+  text-transform: uppercases; // property-value-no-unknown
+  display: flexx; // property-value-no-unknown
+  color: notacolor; // property-value-no-unknown
+  width: abc; // property-value-no-unknown
+  text-transform: casinsss(); // property-value-no-unknown
 }
 
 /* No error: a keyword, a colour function, and a length are all accepted. */
@@ -21,5 +21,5 @@
 
 /* Error: `casins` is a name nothing defines, so the property does not accept the call. */
 .function-name {
-  text-transform: casins();
+  text-transform: casins(); // property-value-no-unknown
 }

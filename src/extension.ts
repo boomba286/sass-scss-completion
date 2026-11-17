@@ -56,6 +56,7 @@ import {
 } from './scss/diagnostics';
 import { findUndefinedVariables, visibleVariablesAt } from './scss/scopes';
 import { extractAttributes, type AttributeCandidate } from './scss/selectors';
+import { parseRuleSettings, resolveRuleState } from './rules';
 
 /** The stylesheets whose selectors and custom properties are indexed. Plain CSS is included here
  * only: a `.css` file has no Sass signature to index and no `@use` module to resolve. */
@@ -134,6 +135,13 @@ function isExcludedPath(fsPath: string): boolean {
   const dirs = new Set([...EXCLUDED_DIRS, ...userExcludedDirs()]);
 
   return fsPath.split(/[\\/]/).some((segment) => dirs.has(segment));
+}
+
+/** The `sass-scss-completion.rules` setting, read on each call so a change takes effect at once. */
+function ruleSettings() {
+  return parseRuleSettings(
+    vscode.workspace.getConfiguration(CONFIG_SECTION).get<Record<string, unknown>>('rules'),
+  );
 }
 
 /** A signature together with the file it was declared in. */
@@ -949,20 +957,27 @@ export function activate(context: vscode.ExtensionContext): void {
           ]
         : []),
     ];
-    const diagnostics = issues.map((issue) => {
+    const settings = ruleSettings();
+    const diagnostics: vscode.Diagnostic[] = [];
+
+    for (const issue of issues) {
+      // A rule the project turned off is dropped, `warn` and `error` override the severity the
+      // check gives its issues, and a rule the setting names nowhere keeps that severity.
+      const state = resolveRuleState(issue.rule, settings, issue.severity ?? 'error');
+
+      if (state === 'off') continue;
+
       const range = new vscode.Range(
         document.positionAt(issue.start),
         document.positionAt(issue.end),
       );
       const severity =
-        issue.severity === 'warning'
-          ? vscode.DiagnosticSeverity.Warning
-          : vscode.DiagnosticSeverity.Error;
+        state === 'warning' ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
       const diagnostic = new vscode.Diagnostic(range, issue.message, severity);
 
       diagnostic.source = 'sass-scss-completion';
-      return diagnostic;
-    });
+      diagnostics.push(diagnostic);
+    }
 
     diagnosticCollection.set(document.uri, diagnostics);
   };
@@ -1403,6 +1418,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (/\.(scss|sass|css)$/i.test(document.uri.fsPath)) scheduleRebuild();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration(`${CONFIG_SECTION}.rules`)) {
+        for (const document of vscode.workspace.textDocuments) updateDiagnostics(document);
+      }
+
       if (
         event.affectsConfiguration(`${CONFIG_SECTION}.exclude`) ||
         event.affectsConfiguration(`${CONFIG_SECTION}.groups`)

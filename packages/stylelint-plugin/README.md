@@ -1,7 +1,7 @@
 # @boomba286/stylelint-plugin-sass-scss
 
 Stylelint rules that reuse the analysis engine behind the
-[Sass/SCSS IntelliSense](https://marketplace.visualstudio.com/items?itemName=boomba286.sass-scss-completion)
+[Sass/SCSS IntelliSense & HTML Class Names](https://marketplace.visualstudio.com/items?itemName=boomba286.sass-scss-completion)
 VS Code extension.
 
 The extension reports its problems in the editor. These rules expose the same engine to the command

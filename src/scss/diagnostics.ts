@@ -6,6 +6,7 @@ import {
   missingRequiredParams,
   parseSassModuleNamespaces,
 } from './builtin-modules';
+import type { DiagnosticRule } from '../rules';
 
 /** Finds the start position of a `namespace.name(` call. */
 const CALL_RE = /([A-Za-z_-][A-Za-z0-9_-]*)\.([A-Za-z0-9_-]+)\s*\(/g;
@@ -25,6 +26,8 @@ export interface DiagnosticIssue {
   /** End offset within the document. */
   end: number;
   message: string;
+  /** The check that found the issue, so a project can turn it off or make it a warning. */
+  rule: DiagnosticRule;
   /** Defaults to `error` when omitted. */
   severity?: DiagnosticSeverity;
 }
@@ -194,6 +197,7 @@ export function findMissingRequiredArgs(text: string): DiagnosticIssue[] {
       message: `Missing required argument(s) ${missing
         .map((param) => `$${param}`)
         .join(', ')} in the call to ${namespace}.${name}.`,
+      rule: 'missing-required-arguments',
     });
   }
 
@@ -284,6 +288,7 @@ export function findModuleIssues(
         start: match.index,
         end: closeParen + 1,
         message: `Undefined ${mixin ? 'mixin' : 'function'} ${match[1]}.${name}.`,
+        rule: 'no-undefined-function',
       });
       continue;
     }
@@ -299,6 +304,7 @@ export function findModuleIssues(
       message: `Missing required argument(s) ${missing
         .map((param) => `$${param}`)
         .join(', ')} in the call to ${match[1]}.${name}.`,
+      rule: 'missing-required-arguments',
     });
   }
 
@@ -313,6 +319,7 @@ export function findModuleIssues(
       start: match.index,
       end: match.index + match[0].length,
       message: `Undefined variable ${match[1]}.$${match[2]}.`,
+      rule: 'no-undefined-variable',
     });
   }
 
@@ -379,7 +386,12 @@ export function findUndefinedFunctions(
     // Skip a call whose parentheses are not closed yet (still being typed).
     if (closeParen === -1) continue;
 
-    issues.push({ start, end: closeParen + 1, message: `Undefined function ${name}.` });
+    issues.push({
+      start,
+      end: closeParen + 1,
+      message: `Undefined function ${name}.`,
+      rule: 'no-undefined-function',
+    });
   }
 
   return issues;

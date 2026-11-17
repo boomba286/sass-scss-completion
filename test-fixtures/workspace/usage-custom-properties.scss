@@ -11,7 +11,7 @@
 
 /* Warning: nothing declares `--missing`. */
 .wrong {
-  color: var(--missing);
+  color: var(--missing); // no-undefined-custom-property
 }
 
 /* No error: a declared name, with or without a fallback. */

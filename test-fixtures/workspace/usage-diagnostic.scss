@@ -1,5 +1,5 @@
 @use 'sass:math';
 
 .error {
-  width: math.div(12);
+  width: math.div(12); // missing-required-arguments
 }
