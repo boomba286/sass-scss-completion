@@ -1,4 +1,4 @@
-// `@use` statement parsing and module URL→file resolution. Independent of the VS Code API (Node only).
+// `@use`/`@import` statement parsing and module URL→file resolution. Independent of the VS Code API (Node only).
 
 import * as path from 'node:path';
 
@@ -43,6 +43,42 @@ export function parseUseStatements(text: string): UseStatement[] {
   }
 
   return statements;
+}
+
+const IMPORT_RE = /@import\s+([^;]+);/g;
+const IMPORT_URL_RE = /['"]([^'"]+)['"]/g;
+
+/**
+ * URLs loaded with `@import` in the file text, in order of appearance. `@import` is the legacy
+ * form of `@use '...' as *`: it brings the loaded module's members into the current scope without
+ * a namespace. A statement that only names plain CSS is skipped: a `url(...)` call, an absolute
+ * `http(s)://` address, and a `.css` path all stay literal CSS imports in Sass.
+ */
+export function parseImportUrls(text: string): string[] {
+  const urls: string[] = [];
+  IMPORT_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = IMPORT_RE.exec(text)) !== null) {
+    const list = match[1];
+
+    // `@import url("...")` is always a CSS import, so the quoted URL inside it is not a Sass load.
+    if (/\burl\s*\(/i.test(list)) continue;
+
+    IMPORT_URL_RE.lastIndex = 0;
+    let url: RegExpExecArray | null;
+
+    while ((url = IMPORT_URL_RE.exec(list)) !== null) {
+      const value = url[1];
+
+      if (/\.css$/i.test(value)) continue;
+      if (/^(?:https?:)?\/\//i.test(value)) continue;
+
+      urls.push(value);
+    }
+  }
+
+  return urls;
 }
 
 const FORWARD_RE = /@forward\s+['"]([^'"]+)['"]/g;

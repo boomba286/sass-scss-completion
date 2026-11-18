@@ -1,25 +1,25 @@
 // The cross-file inputs a rule needs for one document.
 //
 // A stylelint rule sees one file at a time, while the engine the extension uses judges a document
-// against the modules it loads. This module closes the gap: it resolves the `@use` statements in the
-// text to real files and reads the members they export, so the rules can check calls through a
-// workspace module and accept members loaded with `@use '...' as *`.
+// against the modules it loads. This module closes the gap: it resolves the `@use` and `@import`
+// statements in the text to real files and reads the members they export, so the rules can check
+// calls through a workspace module and accept members loaded without a namespace.
 
 import { globSync } from 'tinyglobby';
 import { BUILTIN_VARIABLES, listBuiltinMembers } from '~/scss/builtin-modules';
 import type { SignatureKind } from '~/scss/core';
 import type { ModuleMember, ModuleMembers } from '~/scss/diagnostics';
 import type { ModuleExports } from '~/scss/members';
-import { builtinModuleId, parseUseStatements } from '~/scss/modules';
+import { builtinModuleId, parseImportUrls, parseUseStatements } from '~/scss/modules';
 import { customPropertyNames, exportsOf, resolveModulePath } from './fileIndex';
 
 /** Everything a rule needs to judge a document against the modules it loads. */
 export interface FileContext {
   /** Workspace modules loaded with `@use ... as <namespace>`, keyed by namespace. */
   modules: Map<string, ModuleMembers>;
-  /** `$variables` brought into scope by `@use '...' as *`. */
+  /** `$variables` brought into scope by `@use '...' as *` or `@import '...'`. */
   globalVariables: Set<string>;
-  /** Function names brought into scope by `@use '...' as *`. */
+  /** Function names brought into scope by `@use '...' as *` or `@import '...'`. */
   globalFunctions: Set<string>;
 }
 
@@ -65,10 +65,11 @@ function addBuiltinGlobals(
 }
 
 /**
- * Resolves the `@use` statements in `text` against `filePath`. Built-in namespaces are left to the
- * missing-arguments check, which already knows their members; only workspace modules and `as *`
- * loads are collected here. A module whose re-exports could not all be followed is left out, so
- * reporting never flags a member that a file the index failed to reach might declare.
+ * Resolves the `@use` and `@import` statements in `text` against `filePath`. Built-in namespaces
+ * are left to the missing-arguments check, which already knows their members; only workspace
+ * modules, `as *` loads, and `@import` loads are collected here. A module whose re-exports could
+ * not all be followed is left out, so reporting never flags a member that a file the index failed
+ * to reach might declare.
  */
 export function buildFileContext(text: string, filePath: string | null): FileContext {
   if (filePath === null) return EMPTY;
@@ -77,13 +78,39 @@ export function buildFileContext(text: string, filePath: string | null): FileCon
   const globalVariables = new Set<string>();
   const globalFunctions = new Set<string>();
 
-  for (const use of parseUseStatements(text)) {
-    const moduleId = builtinModuleId(use.url);
+  // A module loaded without a namespace, by `@use '...' as *` or the legacy `@import`. A built-in
+  // module contributes its known variables and functions; a workspace module contributes the
+  // members it exports, but only when its re-exports were all followed.
+  const addGlobalLoad = (url: string): void => {
+    const moduleId = builtinModuleId(url);
 
     if (moduleId) {
-      if (use.global) addBuiltinGlobals(moduleId, globalVariables, globalFunctions);
+      addBuiltinGlobals(moduleId, globalVariables, globalFunctions);
+      return;
+    }
+
+    const resolved = resolveModulePath(url, filePath);
+
+    if (resolved === null) return;
+
+    const exports = exportsOf(resolved);
+
+    if (!exports.complete) return;
+
+    for (const name of exports.variables) globalVariables.add(name);
+
+    for (const signature of exports.functions) {
+      if (signature.kind === 'function') globalFunctions.add(signature.name);
+    }
+  };
+
+  for (const use of parseUseStatements(text)) {
+    if (use.global) {
+      addGlobalLoad(use.url);
       continue;
     }
+
+    if (builtinModuleId(use.url) || use.namespace === null) continue;
 
     const resolved = resolveModulePath(use.url, filePath);
 
@@ -93,20 +120,10 @@ export function buildFileContext(text: string, filePath: string | null): FileCon
 
     if (!exports.complete) continue;
 
-    if (use.global) {
-      for (const name of exports.variables) globalVariables.add(name);
-
-      for (const signature of exports.functions) {
-        if (signature.kind === 'function') globalFunctions.add(signature.name);
-      }
-
-      continue;
-    }
-
-    if (use.namespace === null) continue;
-
     modules.set(use.namespace, toMembers(exports));
   }
+
+  for (const url of parseImportUrls(text)) addGlobalLoad(url);
 
   return { modules, globalVariables, globalFunctions };
 }

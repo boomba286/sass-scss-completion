@@ -26,6 +26,44 @@ describe('extractCustomProperties', () => {
     expect(extractCustomProperties('.a {\n  --#{$name}: 1;\n}')).toEqual([]);
   });
 
+  it('expands a name a loop over a map publishes', () => {
+    const text = [
+      '$sizes: (sm: 1rem, lg: 2rem);',
+      ':root {',
+      '  @each $name, $value in $sizes {',
+      '    --size-#{$name}: #{$value};',
+      '  }',
+      '}',
+    ].join('\n');
+
+    expect(extractCustomProperties(text)).toEqual(['--size-sm', '--size-lg']);
+  });
+
+  it('expands a name a loop over a flat list publishes', () => {
+    const text = [
+      '$states: hover, focus;',
+      ':root {',
+      '  @each $state in $states {',
+      '    --bg-#{$state}: red;',
+      '  }',
+      '}',
+    ].join('\n');
+
+    expect(extractCustomProperties(text)).toEqual(['--bg-hover', '--bg-focus']);
+  });
+
+  it('expands a name a loop over an inline list publishes', () => {
+    expect(
+      extractCustomProperties(':root { @each $size in sm, lg { --pad-#{$size}: 1rem; } }'),
+    ).toEqual(['--pad-sm', '--pad-lg']);
+  });
+
+  it('records the fixed prefix of an interpolation the file does not fix', () => {
+    expect(extractCustomProperties(':root {\n  --font-size-#{$name}: 1;\n}')).toEqual([
+      '--font-size-*',
+    ]);
+  });
+
   it('ignores declarations inside comments and strings', () => {
     const text = '.a {\n  /* --commented: 1 */\n  content: "--quoted: 2";\n}';
 
@@ -71,6 +109,32 @@ describe('findUndefinedCustomProperties', () => {
 
   it('leaves out a name built with interpolation', () => {
     expect(findUndefinedCustomProperties('.a {\n  color: var(--x#{$i});\n}', new Set())).toEqual([]);
+  });
+
+  it('accepts a name a declared pattern covers', () => {
+    expect(
+      findUndefinedCustomProperties(
+        '.a {\n  color: var(--font-size-xl);\n}',
+        new Set(['--font-size-*']),
+      ),
+    ).toEqual([]);
+  });
+
+  it('reports a name outside every declared pattern', () => {
+    expect(
+      findUndefinedCustomProperties(
+        '.a {\n  color: var(--font-siz-xl);\n}',
+        new Set(['--font-size-*']),
+      ),
+    ).toEqual([
+      {
+        start: 18,
+        end: 31,
+        message: 'Unknown custom property --font-siz-xl.',
+        rule: 'no-undefined-custom-property',
+        severity: 'warning',
+      },
+    ]);
   });
 
   it('ignores a use inside a comment', () => {

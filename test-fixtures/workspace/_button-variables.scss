@@ -1,0 +1,3 @@
+// The module both `_button.scss` and `_button-legacy.scss` load. The legacy `@import` form brings
+// `$button-font-family` into scope exactly as `@use ... as *` does.
+$button-font-family: 'Inter', sans-serif;

@@ -4,6 +4,7 @@ import {
   defaultNamespace,
   loadedNamespaces,
   moduleFileCandidates,
+  parseImportUrls,
   parseUseStatements,
 } from './modules';
 
@@ -49,6 +50,32 @@ describe('parseUseStatements', () => {
   it('does not leak state between calls', () => {
     expect(parseUseStatements(`@use 'sass:math';`)).toHaveLength(1);
     expect(parseUseStatements(`@use 'sass:color';`)).toHaveLength(1);
+  });
+});
+
+describe('parseImportUrls', () => {
+  it('parses a bare @import URL', () => {
+    expect(parseImportUrls(`@import '../variables';`)).toEqual(['../variables']);
+  });
+
+  it('parses every URL of a comma-separated statement', () => {
+    expect(parseImportUrls(`@import 'a', "b";`)).toEqual(['a', 'b']);
+  });
+
+  it('parses multiple statements across lines', () => {
+    const source = `@import 'base';\n@import 'theme';\n`;
+
+    expect(parseImportUrls(source)).toEqual(['base', 'theme']);
+  });
+
+  it('skips plain CSS imports', () => {
+    const source = `@import 'reset.css';\n@import url('fonts');\n@import 'https://x/y';\n`;
+
+    expect(parseImportUrls(source)).toEqual([]);
+  });
+
+  it('returns an empty list when there is no @import', () => {
+    expect(parseImportUrls(`@use 'sass:math';`)).toEqual([]);
   });
 });
 

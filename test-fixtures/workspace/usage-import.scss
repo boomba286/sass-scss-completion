@@ -1,0 +1,9 @@
+@import 'tokens';
+@import 'definitions';
+
+.import {
+  margin: $spacing;
+  width: rem(12);
+  @include flex-center(4);
+  height: $not-declared; // no-undefined-variable
+}

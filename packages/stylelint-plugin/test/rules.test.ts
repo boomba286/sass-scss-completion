@@ -192,6 +192,14 @@ describe('sass-scss/no-undefined-function across files', () => {
 
     expect(warnings).toHaveLength(0);
   });
+
+  it('accepts a function a module brings into scope with @import', async () => {
+    const code = "@import 'definitions';\n\na { $x: rem(12); }";
+
+    const warnings = await lintWith(rule, { code, codeFilename: fixture('usage-unknown-member.scss') });
+
+    expect(warnings).toHaveLength(0);
+  });
 });
 
 describe('sass-scss/no-undefined-variable across files', () => {
@@ -202,6 +210,21 @@ describe('sass-scss/no-undefined-variable across files', () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.text).toContain('Undefined variable d.$missing');
+  });
+
+  it('accepts a variable a module brings into scope with @import', async () => {
+    const code = "@import 'tokens';\n\na { margin: $spacing; }";
+
+    const warnings = await lintWith(rule, { code, codeFilename: fixture('usage-unknown-member.scss') });
+
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('reports only the variable the imported files do not declare', async () => {
+    const warnings = await lintWith(rule, { files: fixture('usage-import.scss') });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.text).toContain('Used undefined variable $not-declared');
   });
 });
 
@@ -252,5 +275,28 @@ describe('sass-scss/no-undefined-custom-property across files', () => {
     });
 
     expect(warnings).toHaveLength(0);
+  });
+
+  it('accepts a name another file publishes in a loop over a map from a third file', async () => {
+    // `_theme-properties.scss` cannot resolve `$font-sizes` on its own, so the only fixed part of
+    // `--font-size-#{$name}` it can publish is the prefix. A name inside that family is accepted.
+    const warnings = await lintWith(rule, {
+      code: 'a { font-size: var(--font-size-xl); }',
+      codeFilename: fixture('usage-custom-property-loop.scss'),
+      secondary: { referenceFiles: [fixture('_theme-properties.scss')] },
+    });
+
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('reports a name outside the family a loop publishes', async () => {
+    const warnings = await lintWith(rule, {
+      code: 'a { font-size: var(--font-siz-xl); }',
+      codeFilename: fixture('usage-custom-property-loop.scss'),
+      secondary: { referenceFiles: [fixture('_theme-properties.scss')] },
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.text).toContain('Unknown custom property --font-siz-xl');
   });
 });

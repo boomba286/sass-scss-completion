@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- Variables, mixins, and functions brought in by `@import` are now resolved the same way as `@use '...' as *`, so a variable a legacy stylesheet imports at the top of the file is no longer reported as undefined.
+- Diagnostics are re-run after workspace indexing finishes. Previously a file that was already open when the extension started could show an undefined-variable error that the completed index resolves.
+- A custom property name built with interpolation in a loop is now indexed. A loop over a map (`@each $name, $value in $sizes`) or a flat list (`@each $state in $states`) in the same file contributes its exact names, so `var(--font-size-xl)` is accepted when the file publishes `--font-size-#{$name}`.
+- When the loop walks a list declared in another module, only the fixed part of the name can be read from the publishing file. That part is recorded as a family, so `var(--font-size-xl)` is accepted while a name outside the family, such as `var(--font-siz-xl)`, is still reported. The family itself is never offered as a completion.
+- The `@boomba286/stylelint-plugin-sass-scss` package reuses the same engine, so the `@import` and custom-property fixes apply to it as well.
+
 ## 0.4.0
 
 - Narrowed template completion to **HTML** and **Vue**. `Svelte` and `Astro` are dropped: the extension no longer registers its completion provider for `.svelte` and `.astro` files, and no longer lists them among the supported languages. The Sass and SCSS features are unaffected.

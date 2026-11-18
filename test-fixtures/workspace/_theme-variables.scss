@@ -1,0 +1,9 @@
+// The type scale a loop walks. It lives here while the loop that publishes it lives in
+// `_theme-properties.scss`, so a reader that scans the loop's own file cannot resolve `$font-sizes`
+// and has to fall back to the fixed prefix of the name.
+$font-sizes: (
+  sm: 0.875rem,
+  base: 1rem,
+  xl: 1.25rem,
+  2xl: 2rem,
+);
