@@ -29,6 +29,7 @@ import {
   loadedNamespaces,
   moduleFileCandidates,
   parseForwardUrls,
+  parseImportUrls,
   parseUseStatements,
 } from './scss/modules';
 import {
@@ -827,8 +828,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.createDiagnosticCollection('sass-scss-completion');
 
   /**
-   * Names used without a namespace because of `@use '...' as *`, deduplicated: the members of the
-   * workspace or built-in module the statement loads, with its `@forward` re-exports followed.
+   * Names used without a namespace because of `@use '...' as *` or the legacy `@import '...'`,
+   * deduplicated: the members of the workspace or built-in module the statement loads, with its
+   * `@forward` re-exports followed. Both forms put a module's members into the current scope
+   * without a namespace, so they are collected the same way.
    */
   const globalMembers = (text: string, document: vscode.TextDocument): GlobalMember[] => {
     const members = new Map<string, GlobalMember>();
@@ -838,10 +841,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!members.has(key)) members.set(key, { kind, name, source });
     };
 
-    for (const use of parseUseStatements(text)) {
-      if (!use.global) continue;
-
-      const moduleId = builtinModuleId(use.url);
+    const addModule = (url: string): void => {
+      const moduleId = builtinModuleId(url);
 
       if (moduleId) {
         const source = `sass:${moduleId}`;
@@ -852,12 +853,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
         for (const entry of listBuiltinMembers(moduleId)) add(entry.kind, entry.name, source);
 
-        continue;
+        return;
       }
 
-      const resolved = index.resolveModulePath(use.url, document.uri.fsPath);
+      const resolved = index.resolveModulePath(url, document.uri.fsPath);
 
-      if (resolved === null) continue;
+      if (resolved === null) return;
 
       const source = path.basename(resolved);
       const exports = index.exportsOf(resolved);
@@ -865,7 +866,13 @@ export function activate(context: vscode.ExtensionContext): void {
       for (const name of exports.variables) add('variable', name, source);
 
       for (const signature of exports.functions) add(signature.kind, signature.name, source);
+    };
+
+    for (const use of parseUseStatements(text)) {
+      if (use.global) addModule(use.url);
     }
+
+    for (const url of parseImportUrls(text)) addModule(url);
 
     return [...members.values()];
   };
@@ -1165,13 +1172,15 @@ export function activate(context: vscode.ExtensionContext): void {
       // The first argument of `var()` is always a custom property name, so nothing else is offered.
       if (typed !== '' && !typed.startsWith('-')) return undefined;
 
-      const names = new Set([...index.customPropertyNames(), ...extractCustomProperties(text)]);
+      // A `--prefix*` pattern stands for a family of names a loop builds; it is not a name to insert.
+      const names = [...new Set([...index.customPropertyNames(), ...extractCustomProperties(text)])]
+        .filter((name) => !name.endsWith('*'));
 
-      if (names.size === 0) return undefined;
+      if (names.length === 0) return undefined;
 
       const start = offset - typed.length;
       const range = new vscode.Range(document.positionAt(start), document.positionAt(offset));
-      const items = [...names].sort().map((name) => {
+      const items = names.sort().map((name) => {
         const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Variable);
 
         item.insertText = name;
@@ -1338,10 +1347,16 @@ export function activate(context: vscode.ExtensionContext): void {
     groups = await buildGroups(index);
   };
 
-  /** Rebuilds the index, then the groups that are derived from it. */
+  /**
+   * Rebuilds the index, then the groups that are derived from it, and re-checks the open documents
+   * against the fresh index. The diagnostics resolve modules through the index, so a pass that runs
+   * before it is ready reports members it cannot see yet; re-running once it is built clears them.
+   */
   const rebuildAll = async (): Promise<void> => {
     await index.rebuild();
     await refreshGroups();
+
+    for (const document of vscode.workspace.textDocuments) updateDiagnostics(document);
   };
 
   /**
@@ -1430,7 +1445,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidCloseTextDocument((document) => diagnosticCollection.delete(document.uri)),
   );
 
-  for (const document of vscode.workspace.textDocuments) updateDiagnostics(document);
+  // Documents already open when the extension starts are checked by `rebuildAll`, which waits for
+  // the index; `onDidOpenTextDocument` covers the ones opened afterwards.
 }
 
 export function deactivate(): void {}

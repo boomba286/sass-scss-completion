@@ -112,6 +112,21 @@ describe('extractAttributes', () => {
     ]);
   });
 
+  it('enumerates an @each that walks a map, one name per key', () => {
+    const source = `
+      $sizes: (sm: 1rem, lg: 2rem);
+
+      @each $name, $value in $sizes {
+        .pad-#{$name} { padding: 0; }
+      }
+    `;
+
+    expect(pairs(source)).toEqual([
+      ['class', 'pad-sm'],
+      ['class', 'pad-lg'],
+    ]);
+  });
+
   it('drops an @each whose list is a name that cannot build a selector', () => {
     const source = `
       @each $name in fr. {

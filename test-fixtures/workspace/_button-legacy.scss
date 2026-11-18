@@ -1,0 +1,7 @@
+// The legacy form: `@import` loads the module into the current scope without a namespace, so
+// `$button-font-family` is in scope here too and no undefined variable is reported.
+@import './button-variables';
+
+.button {
+  font-family: $button-font-family;
+}

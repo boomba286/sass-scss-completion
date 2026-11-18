@@ -1,0 +1,7 @@
+// The modern form: `@use ... as *` loads the module into the current scope, so the engine resolves
+// `$button-font-family` and reports no undefined variable.
+@use './button-variables' as *;
+
+.button {
+  font-family: $button-font-family;
+}

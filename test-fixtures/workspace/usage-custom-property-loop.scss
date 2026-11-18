@@ -1,0 +1,10 @@
+/* The names `_theme-properties.scss` publishes in a loop over a map from `_theme-variables.scss`.
+   No file holds the literal name, so the use is accepted through the loop's fixed prefix. */
+.type-scale {
+  font-size: var(--font-size-xl);
+}
+
+/* No error: a name outside the loop's prefix family stays unknown. */
+.typo {
+  font-size: var(--font-siz-xl); // no-undefined-custom-property
+}

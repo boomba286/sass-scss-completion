@@ -1,0 +1,10 @@
+@use 'theme-variables' as *;
+
+// The design tokens are published as custom properties here. Every name is built with interpolation
+// over a map declared in another file, so the literal `--font-size-*` string is nowhere in the
+// source: only the fixed prefix before `#{` can be read from this file alone.
+:root {
+  @each $name, $value in $font-sizes {
+    --font-size-#{$name}: #{$value};
+  }
+}

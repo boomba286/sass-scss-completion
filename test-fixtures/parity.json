@@ -1,6 +1,11 @@
 {
+  "_button-legacy.scss": [],
+  "_button-variables.scss": [],
+  "_button.scss": [],
   "_definitions.scss": [],
   "_forward.scss": [],
+  "_theme-properties.scss": [],
+  "_theme-variables.scss": [],
   "_tokens.scss": [],
   "_variables.scss": [],
   "usage-builtin.scss": [
@@ -9,10 +14,16 @@
   "usage-custom-properties.scss": [
     { "line": 13, "character": 13, "severity": "warning", "message": "Unknown custom property --missing." }
   ],
+  "usage-custom-property-loop.scss": [
+    { "line": 8, "character": 17, "severity": "warning", "message": "Unknown custom property --font-siz-xl." }
+  ],
   "usage-diagnostic.scss": [
     { "line": 3, "character": 9, "severity": "error", "message": "Missing required argument(s) $number2 in the call to math.div." }
   ],
   "usage-dup.scss": [],
+  "usage-import.scss": [
+    { "line": 7, "character": 10, "severity": "error", "message": "Used undefined variable $not-declared." }
+  ],
   "usage-member.scss": [],
   "usage-missing-arg.scss": [
     { "line": 3, "character": 9, "severity": "error", "message": "Missing required argument(s) $value in the call to d.rem." },
